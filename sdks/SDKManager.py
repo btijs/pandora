@@ -206,13 +206,13 @@ class SDKManager(metaclass=Singleton):
         if self.sdk is not None:
             return self.sdk.get_secs()
         else:
-            raise "SDK not initialized yet."
+            raise RuntimeError("SDK not initialized yet.")
 
     def get_entry_addr(self):
         if self.sdk is not None:
             return self.sdk.get_entry_addr()
         else:
-            raise "SDK not initialized yet."
+            raise RuntimeError("SDK not initialized yet.")
 
     def get_sdk_name(self):
         target_sdk = self.__get_sdk_class()

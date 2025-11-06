@@ -103,7 +103,7 @@ class AbstractExplorer(metaclass=Singleton):
         Performs a single step in the exploration.
         Should return a tuple of a boolean whether exploration is finished and a list of errored states.
         """
-        raise "Not implemented"
+        raise NotImplementedError
 
     def get_all_traces(self):
         s = []

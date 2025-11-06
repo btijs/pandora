@@ -21,22 +21,22 @@ class AbstractSDK:
 
     @staticmethod
     def get_sdk_name():
-        raise "Not implemented"
+        raise NotImplementedError
 
     def init_eenter_state(self, eenter_state):
-        raise "Not implemented"
+        raise NotImplementedError
 
     def get_unmeasured_pages(self):
         return []
 
     def get_encl_size(self):
-        raise "Not implemented"
+        raise NotImplementedError
 
     def get_max_inst_size(self):
-        raise "Not implemented"
+        raise NotImplementedError
 
     def get_entry_addr(self):
-        raise "Not implemented"
+        raise NotImplementedError
 
     def get_base_addr(self):
         AbstractSDK.get_load_addr()
@@ -66,7 +66,7 @@ class AbstractSDK:
 
     @staticmethod
     def get_angr_arch():
-        raise "Not implemented"
+        raise NotImplementedError
 
     def modify_init_state(self, init_state):
         """
