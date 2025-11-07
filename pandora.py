@@ -461,9 +461,12 @@ def sdk_callback(ctx: typer.Context, value: str):
     return value
 
 
-def action_callback(ctx: typer.Context, value: List):
+def action_callback(ctx: typer.Context, value: List | None):
     if ctx.resilient_parsing:
         return
+
+    if value is None:
+        return []
 
     action_list = []
     for i in value:
