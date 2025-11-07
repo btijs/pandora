@@ -82,7 +82,7 @@ def unconstrained_read_hook(state):
     addr = state.inspect.mem_read_address
     tainted = taint.is_tainted(addr)
     length = state.inspect.mem_read_length
-    info = "Unconstrained read"
+    info = f"Unconstrained read at memory address {addr}"
     extra_info = "Read address may lie inside or outside enclave"
 
     _report_error(state, addr, tainted, length, info, ptr_in_enclave=True, severity=logging.CRITICAL, extra_info=extra_info)
@@ -96,7 +96,7 @@ def unconstrained_write_hook(state):
     tainted = taint.is_tainted(addr)
     length = state.inspect.mem_write_length
     data = state.inspect.mem_write_expr
-    info = "Unconstrained write"
+    info = f"Unconstrained write at memory address {addr}"
     extra_info = "Write address may lie inside or outside enclave"
 
     # Length may be None. In that case, take the size from data
@@ -113,7 +113,7 @@ def trusted_mem_read_hook(state):
     addr = state.inspect.mem_read_address
     tainted = taint.is_tainted(addr)
     length = state.inspect.mem_read_length
-    info = "Attacker tainted read inside enclave"
+    info = f"Attacker tainted read inside enclave at memory address {addr}"
     extra_info = "Issue downgraded to a warning since read is strictly constrained to memory region inside enclave. Disclaimer: This is a heuristic only, please double check manually!"
 
     if tainted:
@@ -128,7 +128,7 @@ def trusted_mem_write_hook(state):
     tainted = taint.is_tainted(addr)
     length = state.inspect.mem_write_length
     data = state.inspect.mem_write_expr
-    info = "Attacker tainted write inside enclave"
+    info = f"Attacker tainted write inside enclave at memory address {addr}"
     extra_info = "Issue downgraded to a warning since write is strictly constrained to memory region inside enclave. Disclaimer: This is a heuristic only, please double check manually!"
 
     # Length may be None. In that case, take the size from data
@@ -146,7 +146,7 @@ def untrusted_read_hook(state):
     addr = state.inspect.mem_read_address
     tainted = taint.is_tainted(addr)
     length = state.inspect.mem_read_length
-    info = "Non-tainted read outside enclave"
+    info = f"Non-tainted read outside enclave at memory address {addr}"
 
     if not tainted:
         _report_error(state, addr, tainted, length, info, ptr_in_enclave=False, severity=logging.CRITICAL)
@@ -160,7 +160,7 @@ def untrusted_write_hook(state):
     tainted = taint.is_tainted(addr)
     length = state.inspect.mem_write_length
     data = state.inspect.mem_write_expr
-    info = "Non-tainted write outside enclave"
+    info = f"Non-tainted write outside enclave at memory address {addr}"
     # Length may be None. In that case, take the size from data
     if length is None:
         length = len(data)

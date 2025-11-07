@@ -235,9 +235,9 @@ class Reporter(metaclass=Singleton):
                 self.unique_issues[plugin_shortname].add(ip_info)
 
         if severity > logging.INFO:
-            callee_logger.log(severity, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-            callee_logger.log(severity, f"!!!! {ip_info:^72} !!!!")
-            callee_logger.log(severity, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            callee_logger.log(severity, "!" * 120)
+            callee_logger.log(severity, f"!!! {ip_info:^112} !!!")
+            callee_logger.log(severity, "!" * 120)
         else:
             callee_logger.log(severity, ip_info)
 
