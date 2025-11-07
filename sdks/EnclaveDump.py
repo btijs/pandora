@@ -13,19 +13,19 @@ MEMORY_DUMP_BASE_ADDRESS = -1
 
 
 class EnclaveDump(AbstractSGXSDK, HasJSONLayout):
-    def __init__(self, file_name, init_state, version_str, json_file=None, **kwargs):
+    def __init__(self, file_name, init_state, version_str, sdk_json_file=None, **kwargs):
         """
         Loading an enclave dump is slightly different from the other SDKs.
         First, our first argument is not actually an elf file. Instead, it is a file stream to the memory dump.
-        Second, we require a json_file to understand the layout of the enclave dump
+        Second, we require a sdk_json_file to understand the layout of the enclave dump
         """
         super().__init__(file_name, init_state, version_str, **kwargs)
 
-        if json_file is None:
+        if sdk_json_file is None:
             logger.error(f"{ui.log_format.format_error('EnclaveDump SDK requires an additional json file.')} Give this through {ui.log_format.format_inline_header('--sdk-json-file')}. Aborting..")
             exit(1)
 
-        self.enclave_layout = decode_as_json(json_file)
+        self.enclave_layout = decode_as_json(sdk_json_file)
 
         """
         Parse the json and split it into the following parts:
@@ -167,13 +167,13 @@ class EnclaveDump(AbstractSGXSDK, HasJSONLayout):
         return self.code_pages
 
     @staticmethod
-    def prepare_enclave_offset(json_file):
+    def prepare_enclave_offset(sdk_json_file):
         """
         We need to prepare the enclave offset based on the json file to read it from the SECS structure.
         """
         global MEMORY_DUMP_BASE_ADDRESS
 
-        json_list = decode_as_json(json_file)
+        json_list = decode_as_json(sdk_json_file)
         for entry in json_list:
             if entry["entry_type"] == 0:
                 MEMORY_DUMP_BASE_ADDRESS = entry["base"]

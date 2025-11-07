@@ -100,7 +100,7 @@ class HasJSONLayout:
     """
 
     @staticmethod
-    def prepare_enclave_offset(json_file):
+    def prepare_enclave_offset(sdk_json_file):
         """
         Prepares the enclave offset based on the json file.
         """

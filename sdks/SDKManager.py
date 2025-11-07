@@ -136,16 +136,16 @@ class SDKManager(metaclass=Singleton):
                 logger.error(ui.log_format.format_error(f"Unsupported SDK '{requested_sdk}' for arch '{self.target_arch}'.") + " Aborting...")
                 exit(1)
 
-        if requested_sdk == "dump" and self.additional_args["json_file"] is None:
+        if requested_sdk == "dump" and self.additional_args["sdk_json_file"] is None:
             # Try to recover by checking if we can find a .json file of the same name as the .dump file
             file_stem = os.path.splitext(self.executable_path)[0]
             possible_json_file = file_stem + ".json"
             if os.path.isfile(possible_json_file):
                 # Apparently there is a json file with that same name at that same location. Attempt to use that.
-                self.additional_args["json_file"] = possible_json_file
+                self.additional_args["sdk_json_file"] = possible_json_file
                 logger.warning(f"I did not receive an explicit --sdk-json-file with my dump, but I found {possible_json_file} that I will attempt to use now.")
             else:
-                logger.error(f"{ui.log_format.format_error('EnclaveDump SDK requires an additional json file.')} Give this through {ui.log_format.format_inline_header('--sdk-json-file')}. Aborting..")
+                logger.error(f"{ui.log_format.format_error('EnclaveDump SDK requires an additional sdk_json_file.')} Give this through {ui.log_format.format_inline_header('--sdk-json-file')}. Aborting..")
                 exit(1)
 
         # Laslty, keep a list of unmeasured but initialized pages so that they can be combined for the filler mixin
@@ -240,8 +240,8 @@ class SDKManager(metaclass=Singleton):
                 if self.init_state is None:
                     # We do not have an init state yet. There may be the option that we have an SDK that
                     #  has a JSON Layout and may want to set the base addr before it exists.
-                    if issubclass(self.sdk, HasJSONLayout) and self.additional_args["json_file"] is not None:
-                        self.sdk.prepare_enclave_offset(self.additional_args["json_file"])
+                    if issubclass(self.sdk, HasJSONLayout) and self.additional_args["sdk_json_file"] is not None:
+                        self.sdk.prepare_enclave_offset(self.additional_args["sdk_json_file"])
                         # After this, call get_base_addr again
                         base_addr = self.sdk.get_base_addr()
                 else:
