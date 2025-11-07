@@ -1,6 +1,6 @@
 import logging
 
-import explorer
+import explorer.hookers.x86_hooks
 import ui.log_format as log_fmt
 from pithos import abisan, aepic, cfsan, debug, ptrsan
 from sdks.SDKManager import SDKManager
@@ -37,7 +37,7 @@ class PluginManager:
 
         # Lastly, also inform the x86 SimProcedures about the reporter object to use.
         # We have to do this only now since otherwise we have a circular import
-        explorer.x86.SIM_REPS_REPORTER = reporter
+        explorer.hookers.x86_hooks.SIM_REPS_REPORTER = reporter
 
     @staticmethod
     def get_plugin_help():

@@ -3,7 +3,7 @@ import logging
 import angr
 
 from explorer import taint
-from explorer.x86 import x86_arch_regs, x86_data_regs, x86_privileged_regs
+from explorer.hookers.x86_hooks import x86_arch_regs, x86_data_regs, x86_privileged_regs
 from pithos.BasePlugin import BasePlugin
 from sdks.SDKManager import SDKManager
 from sdks.SymbolManager import SymbolManager

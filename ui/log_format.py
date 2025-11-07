@@ -8,7 +8,7 @@ from rich.table import Table
 from rich.theme import Theme
 
 from explorer import taint
-from explorer.x86 import x86_arch_regs, x86_privileged_regs
+from explorer.hookers.x86_hooks import x86_arch_regs, x86_privileged_regs
 from sdks.SymbolManager import SymbolManager
 from utilities.angr_helper import get_reg_value
 
