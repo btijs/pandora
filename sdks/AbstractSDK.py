@@ -4,13 +4,14 @@ import subprocess
 class AbstractSDK:
     def __init__(self, elffile, init_state, version_str, **kwargs):
         self.init_state = init_state
+        self.project = init_state.project
 
     @staticmethod
-    def detect(elffile, binpath):
+    def detect(elffile, binpath) -> str:
         """
         @return Empty string if not detected, else version string.
         """
-        pass
+        raise NotImplementedError
 
     @staticmethod
     def match_strings(binpath, sub):
@@ -49,7 +50,7 @@ class AbstractSDK:
         """
         return -1  # Default: Let angr decide (i.e., skip this setting)
 
-    def get_enclave_range(self):
+    def get_enclave_range(self) -> list[tuple[int, int]]:
         min_addr = self.get_base_addr()
         # we do minus 1 here because min_addr+size is the first address _outside_
         # the enclave, and we want to have the range _inclusive_.

@@ -29,3 +29,15 @@ def decode_as_json(json_path):
             logger.error(f"Json Decode error on file {json_path}:\n{str(e)}")
             exit(1)
     return json_dict
+
+
+def hexify(obj):
+    if isinstance(obj, int):
+        return hex(obj)
+    elif isinstance(obj, (list, tuple, set)):
+        t = type(obj)
+        return t(hexify(x) for x in obj)
+    elif isinstance(obj, dict):
+        return {hexify(k): hexify(v) for k, v in obj.items()}
+    else:
+        return obj

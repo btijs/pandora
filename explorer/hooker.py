@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 import ui.log_format
+from explorer.hookers.arm_hooker import Armv8MHooker
 from explorer.hookers.sancus_hooker import SancusHooker
 from explorer.hookers.x86_hooker import SGXHooker
 
@@ -10,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 # XXX this could also be passed via the SDKManager if we get >1 TEE-specific hooker per architecture
-HOOKERS = {"x86_64": SGXHooker, "msp430": SancusHooker}
+HOOKERS = {"x86_64": SGXHooker, "msp430": SancusHooker, "arm-v8-m": Armv8MHooker}
 
 
 class HookerManager:

@@ -80,6 +80,7 @@ class PandoraContext:
     # Options for enclave memory dumps
     sdk_elf_file: Path
     sdk_json_file: Path
+    idau_json_file: Path
 
 
 def pandora_setup(pandora_ctx: PandoraContext, binary_path: Path):
@@ -123,7 +124,7 @@ def pandora_setup(pandora_ctx: PandoraContext, binary_path: Path):
         SDK Setup
         """
         # Init binary manager to detect sdk
-        sdk_mgr = SDKManager(binary_path, pandora_ctx.sdk_detection_type, elf_file=pandora_ctx.sdk_elf_file, sdk_json_file=pandora_ctx.sdk_json_file, angr_log_level=pandora_ctx.angr_log_level)
+        sdk_mgr = SDKManager(binary_path, pandora_ctx.sdk_detection_type, elf_file=pandora_ctx.sdk_elf_file, sdk_json_file=pandora_ctx.sdk_json_file, angr_log_level=pandora_ctx.angr_log_level, idau_json_file=pandora_ctx.idau_json_file)
 
         # Load binary in angr and initialize the state. Load binary with offset defined by detected SDK
         my_explorer = BasicBlockExplorer(binary_path, action_mgr.actions["explorer"], sdk_mgr.get_load_addr(), angr_backend=sdk_mgr.get_angr_backend(), angr_arch=sdk_mgr.get_angr_arch())
@@ -596,6 +597,16 @@ def main_callback(
         "--sdk-elf-file",
         help="If using the 'dump' sdk, an optional elf file may be passed to utilize its symbols. This does not matter for exploration but is useful for investigating found issues.",
         rich_help_panel="Options for enclave dumps",
+        exists=True,
+        dir_okay=False,
+        readable=True,
+        resolve_path=True,
+    ),
+    idau_json_file: Path = typer.Option(
+        None,
+        "--idau-json-file",
+        help="If using an ARM binary, the json file defining the IDAU regions must be included.",
+        rich_help_panel="Options for ARM binaries",
         exists=True,
         dir_okay=False,
         readable=True,

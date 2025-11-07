@@ -7,6 +7,7 @@ import ui.log_format
 import ui.log_format as fmt
 from sdks import (
     IPE,
+    ArmCortexM,
     EnclaveDump,
     IntelSDK,
     LinuxSelftestEnclave,
@@ -32,6 +33,9 @@ SDKS = {
     "msp430": {
         "ipe": IPE.openIPESDK,
         "sancus": Sancus.SancusSDK,
+    },
+    "arm": {
+        "arm-v8-m": ArmCortexM.ArmCortexM,
     },
 }
 ADDITIONAL_LOADING_OPTIONS = {
