@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 class AbstractSGXSDK(AbstractSDK):
     def __init__(self, elffile, init_state, version_str, **kwargs):
+        super().__init__(elffile, init_state, version_str, **kwargs)
         self.tcs = None  # to be set by subclass
         self.init_state = init_state
         self.unmeasured_regions = []

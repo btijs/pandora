@@ -6,6 +6,7 @@ from pathlib import Path
 
 import dominate
 import dominate.tags as tags
+import dominate.util
 from ansi2html import Ansi2HTMLConverter
 
 from ui import pandora_root_dir
@@ -182,6 +183,12 @@ class HTMLFormatter(BaseFormatter):
     def ansi2html(self, s):
         return dominate.util.raw(self.conv.convert(s, full=False))
 
+    def str_to_html(self, s):
+        # Convert newlines to <br> and \t to &emsp;
+        s = dominate.util.escape(s)
+        s = s.replace("\n", "<br>").replace("\t", "&emsp;")
+        return dominate.util.raw(s)
+
     def make_unique_label(self, s):
         self.label_count += 1
         return f"{s}_{self.label_count}"
@@ -203,7 +210,7 @@ class HTMLFormatter(BaseFormatter):
             with d:
                 if icon:
                     tags.i(cls=f"bi bi-{icon}-fill flex-shrink-0 me-2", style="font-size: 1.7em")
-                tags.div(tags.strong(f"{desc}: ") if desc else "", content)
+                tags.div(tags.strong(f"{desc}: ") if desc else "", self.str_to_html(content))
                 if close:
                     tags.button(type="button", cls="btn-close", data_bs_dismiss="alert")
                     d["class"] += " alert-dismissible fade show"
@@ -336,28 +343,24 @@ class ReportFormatter:
 
         self.reporter_level = logging.getLevelName(reporter_level.upper())
 
-        # First item in list stores metadata
-        self.metadata = report_data[0]
+        self.metadata = report_data["metadata"]
         if self.metadata["type"] != JsonEntryId.ENTRY_ID_METADATA:
             raise Exception("Read Json file does not have the right format (metadata error)")
 
         self.plugin_entries = []
         self.data = []
-        for item in report_data[1:-1]:
-            if item["type"] == JsonEntryId.ENTRY_ID_PLUGIN:
-                self.plugin_entries.append(item)
-            elif item["type"] == JsonEntryId.ENTRY_ID_DATA:
-                self.data.append(item)
+        for k, v in report_data.items():
+            if k == "metadata":
+                continue
+            self.plugin_entries.append({k1: v1 for k1, v1 in v.items() if k1 != "events"})
 
-        # Last item in list stores the completion metadata such as stop_timestamp
-        if report_data[-1]["type"] != JsonEntryId.ENTRY_ID_METADATA:
-            raise Exception("Read Json file does not end on proper metadata.")
-        self.metadata.update(report_data[-1])
+            for event in v.get("events", []):
+                self.data.append(event)
 
         # Initialize formatters for each plugin
         self.plugins = {}
         for plug in self.plugin_entries:
-            # Generate path to repo]rt file
+            # Generate path to report file
             binpath = Path(self.metadata["binary"])
             basedir = generate_basedir("report_folder", binpath)
             filename = f"{generate_filename('report_filename', binpath, logfile_timestamp=self.metadata['time'], force_use_logfile_timestamp=True)}_{plug['name']}.{report_fmt}"
@@ -382,8 +385,12 @@ class ReportFormatter:
             fmt.text(f"Analyzed '{self.metadata['binary']}', with '{self.metadata['sdk']}' enclave runtime. " + f"Ran for {str(elapsed)} on {self.metadata['time']}.")
 
             # Backwards compatibility
-            if "enclave_range" in self.metadata:
-                fmt.info("Enclave info", f"Address range is {self.metadata['enclave_range']}")
+            if "enclave_ranges" in self.metadata:
+                if len(self.metadata["enclave_ranges"]) <= 2:
+                    msg = f"Address range is {self.metadata['enclave_ranges']}"
+                else:
+                    msg = f"Address range is [\n\t{'\n\t'.join(self.metadata['enclave_ranges'])}\n]"
+                fmt.info("Enclave info", msg)
 
             # TODO: Slight code duplication to Reporter below
             lvl_summaries = []

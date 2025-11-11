@@ -9,6 +9,7 @@ from pathlib import Path
 import pandora_options
 import ui
 from explorer.enclave import get_enclave_range
+from sdks.SDKManager import SDKManager
 from sdks.SymbolManager import SymbolManager
 from ui import log_setup, pandora_root_dir
 from ui.log_format import (
@@ -103,7 +104,6 @@ class Reporter(metaclass=Singleton):
         path = generate_basedir("log_folder", Path(binary))
         self.filepath = path / f"{generate_filename('log_filename', Path(binary))}.json"
         self.filename = self.filepath.resolve()
-        self.file = open(self.filepath, "w")
 
         self.start = timeit.default_timer()
 
@@ -113,14 +113,11 @@ class Reporter(metaclass=Singleton):
         # Keep a set of unique issues that we do not want to duplicate. Dict keeps one set per plugin
         self.unique_issues = {}
 
-        enclave_ranges = [f"({min:#x}, {max:#x})" for (min, max) in get_enclave_range()]
+        # Create dictionary for reporting
+        self.report_data = {}
 
         # The first object in each json contains metadata
-        metadata = {"type": JsonEntryId.ENTRY_ID_METADATA, "binary": Path(binary).name, "time": datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), "start_timestamp": datetime.datetime.now().timestamp(), "sdk": sdk_name, "enclave_range": f"[{', '.join(enclave_ranges)}]"}
-
-        self.file.write("[\n")
-        self.file.write(json.dumps(metadata))
-        self.file.write(",\n")
+        self.report_data["metadata"] = {"type": JsonEntryId.ENTRY_ID_METADATA, "binary": Path(binary).name, "time": datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), "start_timestamp": datetime.datetime.now().timestamp(), "sdk": sdk_name}
 
         # Start the reporter by registering the system events plugin for relevant system events
         self.register_plugin("SystemEvents", "Relevant events during Pandora execution.", SYSTEM_EVENTS_REPORT_NAME)
@@ -135,8 +132,7 @@ class Reporter(metaclass=Singleton):
         self.plugins[shortname] = {"name": name, "ip": defaultdict(set)}
 
         plugin_data = {"type": JsonEntryId.ENTRY_ID_PLUGIN, "name": name, "desc": desc, "shortname": shortname}
-        self.file.write(json.dumps(plugin_data))
-        self.file.write(",\n")
+        self.report_data[shortname] = plugin_data
 
         # also register this plugin with the unique issues
         self.unique_issues[shortname] = set()
@@ -146,6 +142,12 @@ class Reporter(metaclass=Singleton):
         Write a summary of reported issues during runtime.
         Then write the final timestamp + closing bracket and close the file
         """
+        # First, write metadata to json
+        addr_len = SDKManager().sdk.project.arch.bits // 4
+        enclave_ranges = [f"(0x{min:0{addr_len}X}, 0x{max:0{addr_len}X})" for (min, max) in get_enclave_range()]
+        self.report_data["metadata"]["enclave_ranges"] = enclave_ranges
+        self.report_data["metadata"]["stop_timestamp"] = datetime.datetime.now().timestamp()
+
         for shortname, plug in self.plugins.items():
             lvl_summaries = []
             pretty_ips = {}
@@ -164,9 +166,10 @@ class Reporter(metaclass=Singleton):
             if lvl_summaries:
                 log_always(logger, format_table(pretty_ips, key_hdr="Severity", val_hdr=f"Reports by {name}"))
 
-        self.file.write(json.dumps({"type": JsonEntryId.ENTRY_ID_METADATA, "stop_timestamp": datetime.datetime.now().timestamp()}))
-        self.file.write("\n]")
-        self.file.close()
+        # Now, write the report data to file
+        with open(self.filename, "w") as file:
+            file.write(json.dumps(self.report_data))
+
         log_always(logger, f"\n\nPandora log data stored at {format_link(self.filename, self.filename)}")
 
     def report_severity_stats(self, logger):
@@ -246,7 +249,7 @@ class Reporter(metaclass=Singleton):
             callee_logger.log(severity, "Not writing this issue to report since it is below the report-level.")
         else:
             # We seem to be ready for report writing. Prepare the item and write it to file.
-            sym = SymbolManager().get_symbol(ip)
+            sym, _ = SymbolManager().get_symbol(ip)
             self.plugins[plugin_shortname]["ip"][logging.getLevelName(severity)].add((ip, info))
 
             if pandora_options.PandoraOptions().get_option(pandora_options.PANDORA_REPORT_OMIT_ATTACKER_CONSTRAINTS):
@@ -269,6 +272,4 @@ class Reporter(metaclass=Singleton):
                 "extra-sections": extra_sections,
             }
 
-            self.file.write(json.dumps(report_element))
-            self.file.write(",\n")
-            self.file.flush()
+            self.report_data[plugin_shortname].setdefault("events", []).append(report_element)
