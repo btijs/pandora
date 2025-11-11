@@ -28,7 +28,7 @@ class ExplorationStatistics(ExplorationTechnique):
         """
         for s in simgr.active:
             ip = get_reg_value(s, "ip")
-            symbol = self.sm.get_symbol(ip)
+            symbol, _ = self.sm.get_symbol(ip)
 
             if symbol == "UNKNOWN":
                 symbol += f" <{ip:#x}>"

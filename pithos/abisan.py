@@ -164,7 +164,7 @@ def break_abi_to_api(state):
             logger.critical(f"--- ABI2API breakpoint @{ip} seems to be symbolic. Aborting ---")
             return
 
-        sym_name = SymbolManager().get_symbol(ip)
+        sym_name, _ = SymbolManager().get_symbol(ip)
         """
         Our heuristic assumes that the first call instruction is the actual api entry point.
         While surprisingly effective, this is not true for all SDKs.

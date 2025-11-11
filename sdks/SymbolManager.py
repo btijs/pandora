@@ -126,12 +126,12 @@ class SymbolManager(metaclass=Singleton):
         if self.symbol_table is None:
             sym = self.init_state.project.loader.find_symbol(addr, fuzzy=True)
             if sym is not None:
-                return sym.name
+                return sym.name, addr - sym.rebased_addr
             else:
-                return "UNKNOWN"
+                return "UNKNOWN", None
         else:
             idx = self._bisect_idx(addr)
-            return self.symbol_table_value_list[idx]
+            return self.symbol_table_value_list[idx], addr - self.symbol_table_list[idx]
 
     def get_symbol_exact(self, addr):
         if self.symbol_table is None:
@@ -157,8 +157,7 @@ class SymbolManager(metaclass=Singleton):
 
     def _get_addr_offset(self, addr):
         if self.symbol_table is None:
-            sym_name = self.get_symbol(addr)
-            offset = 0x0
+            sym_name, offset = self.get_symbol(addr)
         else:
             idx = self._bisect_idx(addr)
             prev_addr = list(self.symbol_table)[idx]

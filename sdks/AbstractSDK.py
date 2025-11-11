@@ -39,8 +39,8 @@ class AbstractSDK:
     def get_entry_addr(self):
         raise NotImplementedError
 
-    def get_base_addr(self):
-        AbstractSDK.get_load_addr()
+    def get_base_addr(self) -> int:
+        return AbstractSDK.get_load_addr()
 
     @staticmethod
     def get_load_addr():

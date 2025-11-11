@@ -32,7 +32,7 @@ class PandoraLoopSeer(ExplorationTechnique):
         stuck_states = []
         for s in simgr.active:
             ip = get_reg_value(s, "ip")
-            symbol = self.sm.get_symbol(ip)
+            symbol, _ = self.sm.get_symbol(ip)
 
             """
             We keep two lists that each contain:

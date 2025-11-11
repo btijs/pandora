@@ -265,7 +265,7 @@ def get_state_backtrace_compact(state):
     bbt = []
     sym_name_prev = ""
     for a in state.history.bbl_addrs:
-        sym_name = SymbolManager().get_symbol(a)
+        sym_name, _ = SymbolManager().get_symbol(a)
         rel = SymbolManager().get_rebased_addr(a)
         if sym_name != sym_name_prev:
             bbt.append(f"{a:#x} {'<' + sym_name + '>':<35} ({rel:#x} relative to obj base)")
@@ -338,7 +338,7 @@ def dump_asm(state, logger, log_level=logging.DEBUG, header_msg="", angr_project
         else:
             ip = get_reg_value(state, "ip")
 
-    sym = SymbolManager().get_symbol(ip)
+    sym, _ = SymbolManager().get_symbol(ip)
 
     log_msg = format_header(header_msg) + format_inline_header(f"\n\t---- BEGIN ASM ({sym}) ----") + "\n" + asm + format_inline_header("\t---- END ASM ----")
     logger.log(log_level, log_msg)
