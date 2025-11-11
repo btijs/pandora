@@ -126,37 +126,17 @@ class BaseAttributionUnit[T: AttributionUnitRegion]:
     def get_region_constructor(self) -> type[T]:
         raise NotImplementedError
 
-    def _nested_attribution_check(
-        self,
-        address: ast.BV,
-        i: int,
-        match: Callable[[T], int | ast.BV],
-        default: int | ast.BV,
-    ) -> ast.BV:
-        # TODO: if multiple regions match, no region should be returned
-        region = self.regions[i]
-        return claripy.If(
-            claripy.And(
-                # Both inclusive, see ARMv8-M Architecture Reference Manual: R_KRSC
-                region.start_address <= address,
-                address <= region.end_address,
-            ),
-            # If address is in this region, return the result of the match function
-            match(region),
-            self._nested_attribution_check(address, i + 1, match, default)
-            if i + 1 < len(self.regions)
-            # If no region matches, return default value
-            else default,
-        )
-
     def get_flattened_regions(self) -> Sequence[T]:
+        raise NotImplementedError
+
+    def _get_flattened_regions(self, default) -> Sequence[T]:
         if len(self.regions) == 0:
             return [
                 self.get_region_constructor()(
                     region_number=-1,
                     start_address=0x0,
                     end_address=(2**self.bits) - 1,
-                    security_state=SecurityState.SECURE,
+                    security_state=default,
                     is_exempted=False,
                 ),
             ]
@@ -169,7 +149,7 @@ class BaseAttributionUnit[T: AttributionUnitRegion]:
                 region_number=-1,
                 start_address=0,
                 end_address=sorted_merged_regions[0].start_address - 1,
-                security_state=SecurityState.SECURE,
+                security_state=default,
                 is_exempted=False,
             )
         else:
@@ -232,7 +212,7 @@ class BaseAttributionUnit[T: AttributionUnitRegion]:
                             region_number=-1,
                             start_address=curr_region.end_address + 1,
                             end_address=next_region_start - 1,
-                            security_state=SecurityState.SECURE,
+                            security_state=default,
                             is_exempted=False,
                         ),
                     )
@@ -248,7 +228,7 @@ class BaseAttributionUnit[T: AttributionUnitRegion]:
                     region_number=-1,
                     start_address=regions[-1].end_address + 1,
                     end_address=(2**self.bits) - 1,
-                    security_state=SecurityState.SECURE,
+                    security_state=default,
                     is_exempted=False,
                 ),
             )
@@ -295,6 +275,9 @@ class IDAU(BaseAttributionUnit[IDAURegion]):
 
     def get_region_constructor(self) -> type[IDAURegion]:
         return IDAURegion
+
+    def get_flattened_regions(self) -> Sequence[IDAURegion]:
+        return super()._get_flattened_regions(SecurityState.SECURE)
 
     def __repr__(self) -> str:
         return f"""IDAU(
@@ -396,6 +379,9 @@ class SAU(BaseAttributionUnit[SAURegion]):
 
         # We shouldn't explicitly reset the current values, they will be overwritten
         # If they are not overwritten, the previous values will be used again
+
+    def get_flattened_regions(self) -> Sequence[SAURegion]:
+        return super()._get_flattened_regions(SecurityState.NONSECURE if self.ALLNS else SecurityState.SECURE)
 
     def __repr__(self) -> str:
         return f"""SAU(
