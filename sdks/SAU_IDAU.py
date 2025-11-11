@@ -6,9 +6,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import overload
 
+import angr
 import claripy
 import claripy.ast as ast
 import json5
+from angr import SimStatePlugin
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -440,10 +442,15 @@ def _nested_attribution_check(address, regions, match, default):
     )
 
 
-class FullAttributionUnit:
+class FullAttributionUnit(SimStatePlugin):
     def __init__(self, idau: IDAU, sau: SAU):
+        super().__init__()
         self.idau: IDAU = idau
         self.sau: SAU = sau
+
+    @angr.SimStatePlugin.memo
+    def copy(self, _memo):  # type: ignore
+        return FullAttributionUnit(self.idau, self.sau)
 
     def get_tt_response(
         self,
@@ -454,7 +461,7 @@ class FullAttributionUnit:
         a_flag: bool,
         t_flag: bool,
     ) -> ast.BV:
-        """ """
+        # TODO: make use of A and T flags
 
         regions = self.get_flattened_regions()
         idau_region_nr = _nested_attribution_check(

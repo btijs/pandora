@@ -8,6 +8,7 @@ dependencies = [
     "angr>=9.2.182",
     "ansi2html>=1.9.2",
     "dominate>=2.9.1",
+    "ipython>=9.7.0",
     "json5>=0.12.1",
     "typer>=0.20.0",
 ]

@@ -6,6 +6,7 @@ from claripy import ast
 
 from explorer import taint
 from sdks.SAU_IDAU import FullAttributionUnit, ProcessorPrivilegeLevel, ProcessorSecurityState
+from ui.report import Reporter
 from utilities.angr_helper import get_reg_size, set_reg_value
 from utilities.helper import hexify
 
@@ -27,9 +28,7 @@ class SimTestTarget(SimProcedure):
         if not rd or not rn:
             raise ValueError("rd and rn must be provided to TestTarget SimProcedure")
 
-        print(
-            f"Hooked TTA instruction at address 0x{self.state.addr:x},rd: {rd}, rn: {rn}={self.state.regs.__getattr__(rn)}",
-        )
+        logger.info(f"Hooked TTA instruction at address 0x{self.state.addr:x},rd: {rd}, rn: {rn}={self.state.regs.__getattr__(rn)}")
 
         p = self.state.regs.__getattr__(rd)
         if not isinstance(p, ast.BV):
@@ -50,7 +49,15 @@ class SimTestTarget(SimProcedure):
 
 class SimSG(SimProcedure):
     def run(self, **kwargs):
-        logger.warning(f"Hooked SG instruction at address 0x{self.state.addr:x}, SKIPPING (NOT IMPLEMENTED)")
+        logger.info(f"Hooked SG instruction at address 0x{self.state.addr:x}.")
+        if "secure" not in self.state.globals:
+            raise ValueError("State does not have 'secure' global variable set")
+        elif not self.state.globals["secure"]:
+            self.state.history.trim()
+            self.state.globals["secure"] = True
+            logger.info("State switched to secure mode.")
+        else:
+            logger.info("State is already in secure mode, ignoring SG instruction.")
         self.jump(self.state.addr + 4)
 
 
@@ -73,8 +80,30 @@ class SimBXNS(SimProcedure):
 
             logger.info(f"Possible sg instructions: {hexify(sg_instr_addrs)}, jumping to all of them in parallel (different states)")
             for sg_addr in sg_instr_addrs:
+                # TODO: clear history
                 new_state = self.state.copy()
+                new_state.globals["secure"] = False
                 self.successors.add_successor(new_state, sg_addr + 1, claripy.true(), "Ijk_Boring")
-            self.ret()
 
-        self.exit(0)
+        # Set current state to exit
+        self.state.globals["eexit"] = True
+        self.jump(self.state.addr)
+
+
+def setup_sau_hook(state):
+    if state.solver.is_true(
+        claripy.And(
+            state.inspect.mem_write_address >= 0xE000EDD0,
+            state.inspect.mem_write_address <= 0xE000EDD0 + 0x18,
+        ),
+    ):
+        if "sau_setup_done" not in state.globals:
+            raise RuntimeError("sau_setup_done not in state.globals during SAU setup hook.")
+        elif state.globals["sau_setup_done"]:
+            # TODO: fix reporting from the correct plugin. For now, I just use the ptr plugin.
+            Reporter().report("SAU configuration write attempted after initial setup.", state, logger, "ptr", logging.CRITICAL, {})
+            # logger.critical("SAU configuration write attempted after initial setup.")
+            return
+        address = state.solver.eval(state.inspect.mem_write_address)
+        value = state.solver.eval(state.inspect.mem_write_expr)
+        state.full_attribution_unit.sau.config_write(address, value)

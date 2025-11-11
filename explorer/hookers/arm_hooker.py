@@ -11,10 +11,6 @@ logger = logging.getLogger(__name__)
 
 class Armv8MHooker(AbstractHooker):
     def hook_mem_region(self, addr, size):
-        if "full_attribution_unit" not in self.init_state.globals:
-            raise ValueError("Full Attribution Unit not found in init_state.globals")
-        au = self.init_state.globals["full_attribution_unit"]
-
         sg_instr_addrs = self.init_state.globals.get("sg_instr_addrs", [])
 
         section_bytes = self.project.loader.memory.load(addr, size)
@@ -38,7 +34,7 @@ class Armv8MHooker(AbstractHooker):
                 a_flag = instr.mnemonic in ["tta", "ttat"]
                 t_flag = instr.mnemonic in ["ttt", "ttat"]
 
-                hook = SimTestTarget(rd=rd, rn=rn, attribution_unit=au, a_flag=a_flag, t_flag=t_flag)
+                hook = SimTestTarget(rd=rd, rn=rn, attribution_unit=self.init_state.get_plugin("full_attribution_unit"), a_flag=a_flag, t_flag=t_flag)
                 self.project.hook(instr.address, hook, length=instr.size)
             elif instr.mnemonic == "sg":
                 logger.info(f"Found SG instruction at address 0x{instr.address:x}. Hooking now...")

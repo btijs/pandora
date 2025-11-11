@@ -1,7 +1,6 @@
 import logging
 
 import angr
-import claripy
 
 from sdks.AbstractSDK import AbstractSDK
 from sdks.SAU_IDAU import IDAU, SAU, FullAttributionUnit
@@ -26,7 +25,7 @@ class ArmCortexM(AbstractSDK):
         self.sau = SAU()
         self.idau = IDAU(idau_json_file)
         self.au = FullAttributionUnit(self.idau, self.sau)
-        self.init_state.globals["full_attribution_unit"] = self.au
+        self.init_state.register_plugin("full_attribution_unit", self.au)
 
     @staticmethod
     def detect(elffile, binpath):
@@ -50,8 +49,6 @@ class ArmCortexM(AbstractSDK):
         return "arm-v8-m"
 
     def init_eenter_state(self, eenter_state):
-        # TODO: implement any specific initialization for Arm Cortex-M enclaves here (e.g. SAU setup)
-
         # Setup initial PC
         set_reg_value(eenter_state, "pc", self.get_entry_addr())
 
@@ -60,6 +57,8 @@ class ArmCortexM(AbstractSDK):
         eenter_state.regs.cc_dep1 = 0
 
         eenter_state.regs.itstate = 0
+
+        eenter_state.globals["secure"] = True
 
         self.setup_sau(eenter_state)
 
@@ -71,39 +70,22 @@ class ArmCortexM(AbstractSDK):
         return 4
 
     def get_entry_addr(self):
-        # TODO: is this enclave entry or application entry?
         return self.project.entry
-        return self.project.loader.find_symbol("SECURE_square").rebased_addr
-        return 0x0C03E018 + 1
 
     def get_enclave_range(self):
         return self.au.get_enclave_ranges()
 
     def setup_sau(self, state):
+        from explorer.hookers.arm_hooks import setup_sau_hook  # import here to avoid circular imports
+
         logger.info("Setting up SAU configuration hook...")
         state.inspect.b(
             "mem_write",
             when=angr.BP_AFTER,
-            action=self.setup_sau_hook,
+            action=setup_sau_hook,
         )
 
         state.globals["sau_setup_done"] = False
-
-        # # run simgr until BLXNS mnemonic is hit
-        # # this happens when the secure code jumps to the non-secure reset handler (end of secure setup)
-        # simgr = self.project.factory.simulation_manager(self.init_state)
-        # simgr.explore(find=lambda state: state.block().disassembly.insns[0].mnemonic == "blxns")
-
-    def setup_sau_hook(self, state):
-        if state.solver.is_true(
-            claripy.And(
-                state.inspect.mem_write_address >= 0xE000EDD0,
-                state.inspect.mem_write_address <= 0xE000EDD0 + 0x18,
-            ),
-        ):
-            address = state.solver.eval(state.inspect.mem_write_address)
-            value = state.solver.eval(state.inspect.mem_write_expr)
-            self.sau.config_write(address, value)
 
     def get_non_secure_callable_regions(self):
         return self.au.get_nsc_ranges()
