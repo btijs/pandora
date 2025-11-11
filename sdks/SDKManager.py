@@ -15,7 +15,7 @@ from sdks import (
     Sancus,
     Scone,
 )
-from sdks.AbstractSDK import HasJSONLayout
+from sdks.AbstractSDK import AbstractSDK, HasJSONLayout
 from sdks.AbstractSGXSDK import AbstractSGXSDK
 from sdks.SymbolManager import SymbolManager
 from utilities.helper import file_stream_is_elf_file
@@ -23,7 +23,7 @@ from utilities.Singleton import Singleton
 
 logger = logging.getLogger(__name__)
 
-SDKS = {
+SDKS: dict[str, dict[str, type[AbstractSDK]]] = {
     "x86_64": {
         "intel": IntelSDK.IntelSDK,
         "linux-selftest": LinuxSelftestEnclave.LinuxSelftestEnclave,
@@ -50,7 +50,7 @@ class SDKManager(metaclass=Singleton):
         Default options exist to make the SDKManager callable as a Singleton.
         """
         # Define sdk and init_state, initialized as None
-        self.sdk = None
+        self.sdk: AbstractSDK | None = None
         self.init_state = None
         self.additional_args = kwargs
         self.elf_symb_file = elf_file
@@ -101,12 +101,12 @@ class SDKManager(metaclass=Singleton):
             requested_sdk = "dump"
             self.executable_object = executable_path
 
+        self.possible_sdk: type[AbstractSDK] | None = None
+        self.possible_sdk_version = ""
         # Detect the utilized SDK from the binary.
         if requested_sdk == "auto":
             logger.debug(f"Starting {self.target_arch.upper()} SDK detection..")
             found = False
-            self.possible_sdk = None
-            self.possible_sdk_version = ""
 
             for name, sdk in SDKS[self.target_arch].items():
                 version = sdk.detect(self.executable_object, executable_path)
