@@ -94,6 +94,12 @@ class AbstractSDK:
     def override_executable(self, addr):
         return False
 
+    def is_thumb_mode(self) -> bool:
+        """
+        Returns whether the SDK requires Thumb mode for execution.
+        """
+        return False
+
 
 class HasJSONLayout:
     """

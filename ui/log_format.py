@@ -9,6 +9,7 @@ from rich.theme import Theme
 
 from explorer import taint
 from explorer.hookers.x86_hooks import x86_arch_regs, x86_privileged_regs
+from sdks.SDKManager import SDKManager
 from sdks.SymbolManager import SymbolManager
 from utilities.angr_helper import get_reg_value
 
@@ -294,7 +295,7 @@ def format_asm(state, formatting=None, angr_project=None, use_ip=None, highlight
 
     current_block = angr_project.factory.block(ip)
     try:
-        disasm = angr_project.analyses.Disassembly(ranges=[(current_block.addr, current_block.addr + current_block.size)])
+        disasm = angr_project.analyses.Disassembly(ranges=[(current_block.addr, current_block.addr + current_block.size)], thumb=SDKManager().is_thumb_mode())
         pp = disasm.render(formatting=formatting)
         pp = re.sub(r"0x[0-9a-f]+", lambda h: SymbolManager().get_hex_symbol(int(h.group(), base=16)), pp)
         ins_list = [f"\t{line.lstrip()}\n" for line in pp.split("\n")]

@@ -89,3 +89,6 @@ class ArmCortexM(AbstractSDK):
 
     def get_non_secure_callable_regions(self):
         return self.au.get_nsc_ranges()
+
+    def is_thumb_mode(self):
+        return True

@@ -369,3 +369,9 @@ class SDKManager(metaclass=Singleton):
                 # allow the SDK to have the last word (to support unmeasured
                 # executable page that are added to the ELF file after loading)
                 return self.sdk.override_executable(addr)
+
+    def is_thumb_mode(self):
+        if self.sdk is None:
+            raise RuntimeError("SDK not initialized yet.")
+        else:
+            return self.sdk.is_thumb_mode()
