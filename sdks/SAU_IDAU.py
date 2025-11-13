@@ -83,19 +83,65 @@ class SAURegion(AttributionUnitRegion):
 
 @overload
 def merge_adjacent_regions(
-    regions: Sequence[AttributionUnitRegion],
-) -> Sequence[AttributionUnitRegion]: ...
+    regions: list[AttributionUnitRegion],
+    mergeable: Callable[[AttributionUnitRegion, AttributionUnitRegion], bool] = lambda a, b: a.mergeable(b),
+) -> list[AttributionUnitRegion]: ...
 
 
 @overload
-def merge_adjacent_regions(regions: Sequence[FlattenedRegion]) -> Sequence[FlattenedRegion]: ...
+def merge_adjacent_regions(
+    regions: list[FlattenedRegion],
+    mergeable: Callable[[FlattenedRegion, FlattenedRegion], bool] = lambda a, b: a.mergeable(b),
+) -> list[FlattenedRegion]: ...
 
 
-def merge_adjacent_regions(regions):
+@overload
+def merge_adjacent_regions(
+    regions: list[tuple[int, int]],
+    mergeable: Callable[[tuple[int, int], tuple[int, int]], bool] = lambda a, b: a[1] + 1 >= b[0],
+) -> list[tuple[int, int]]: ...
+
+
+def merge_adjacent_regions(regions, mergeable=None):
+    # Set default mergeable depending on the region type
+    if not regions:
+        return []
+    first = regions[0]
+    if hasattr(first, "mergeable"):
+        if mergeable is None:
+
+            def mergeable_func(a, b):
+                return a.mergeable(b)
+        else:
+            mergeable_func = mergeable
+
+        def sort_key(r):
+            return r.start_address
+
+        def merge_func(a, b):  # type: ignore
+            merged_region = copy(a)
+            merged_region.end_address = max(a.end_address, b.end_address)
+            return merged_region
+    elif isinstance(first, tuple):
+        if mergeable is None:
+
+            def mergeable_func(a, b):
+                return a[1] + 1 >= b[0]
+        else:
+            mergeable_func = mergeable
+
+        def sort_key(r):
+            return r[0]
+
+        def merge_func(a, b):
+            return (a[0], max(a[1], b[1]))
+    else:
+        raise TypeError(f"Unsupported region type: {type(first)}")
+
     if len(regions) <= 1:
         return regions
 
-    sorted_regions = sorted(regions, key=lambda r: r.start_address)
+    sorted_regions = sorted(regions, key=sort_key)
     merged_regions: list = []
 
     for i in range(len(sorted_regions)):
@@ -104,10 +150,8 @@ def merge_adjacent_regions(regions):
             merged_regions.append(curr_region)
         else:
             last_region = merged_regions[-1]
-            if last_region.mergeable(curr_region):
-                merged_region = copy(last_region)
-                merged_region.end_address = max(last_region.end_address, curr_region.end_address)
-                merged_regions[-1] = merged_region
+            if mergeable_func(last_region, curr_region):
+                merged_regions[-1] = merge_func(last_region, curr_region)
             else:
                 merged_regions.append(curr_region)
     return merged_regions
@@ -487,6 +531,8 @@ class FullAttributionUnit(SimStatePlugin):
             claripy.BoolV(True),  # it shouldn't matter what default is here, as all address space should be covered
         )
 
+        logger.info(f"TT lookup for address 0x{address} returned:\n\tIDAU region nr={idau_region_nr},\n\tIDAU valid={idau_region_valid},\n\tSAU region nr={sau_region_nr},\n\tSAU valid={sau_region_valid},\n\tsecure={secure}")
+
         # MPU =====================================================================================
         # TODO: implement the MPU
 
@@ -625,20 +671,7 @@ class FullAttributionUnit(SimStatePlugin):
 
         regions = [(r.start_address, r.end_address) for r in flattened_regions if r.security_state == SecurityState.NONSECURE_CALLABLE or r.security_state == SecurityState.SECURE]
 
-        # TODO: clean this up by reusing merge_adjacent_regions
-        # Merge adjacent/overlapping regions
-        merged_regions: list[tuple[int, int]] = []
-        for region in regions:
-            if len(merged_regions) == 0:
-                merged_regions.append(region)
-            else:
-                last_region = merged_regions[-1]
-                if last_region[1] + 1 == region[0]:
-                    merged_region = (last_region[0], max(last_region[1], region[1]))
-                    merged_regions[-1] = merged_region
-                else:
-                    merged_regions.append(region)
-        return merged_regions
+        return merge_adjacent_regions(regions)
 
     def get_nsc_ranges(self) -> list[tuple[int, int]]:
         """Get address ranges that are Non-secure-callable"""
@@ -646,20 +679,7 @@ class FullAttributionUnit(SimStatePlugin):
 
         regions = [(r.start_address, r.end_address) for r in flattened_regions if r.security_state == SecurityState.NONSECURE_CALLABLE]
 
-        # TODO: clean this up by reusing merge_adjacent_regions
-        # Merge adjacent/overlapping regions
-        merged_regions: list[tuple[int, int]] = []
-        for region in regions:
-            if len(merged_regions) == 0:
-                merged_regions.append(region)
-            else:
-                last_region = merged_regions[-1]
-                if last_region[1] + 1 == region[0]:
-                    merged_region = (last_region[0], max(last_region[1], region[1]))
-                    merged_regions[-1] = merged_region
-                else:
-                    merged_regions.append(region)
-        return merged_regions
+        return merge_adjacent_regions(regions)
 
 
 @dataclass
