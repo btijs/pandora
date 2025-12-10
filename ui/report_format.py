@@ -387,9 +387,9 @@ class ReportFormatter:
             # Backwards compatibility
             if "enclave_ranges" in self.metadata:
                 if len(self.metadata["enclave_ranges"]) <= 2:
-                    msg = f"Address range is {self.metadata['enclave_ranges']}"
+                    msg = f"Secure address range is {self.metadata['enclave_ranges']}"
                 else:
-                    msg = f"Address range is [\n\t{'\n\t'.join(self.metadata['enclave_ranges'])}\n]"
+                    msg = f"Secure address range is [\n\t{'\n\t'.join(self.metadata['enclave_ranges'])}\n]"
                 fmt.info("Enclave info", msg)
 
             # TODO: Slight code duplication to Reporter below
