@@ -3,8 +3,7 @@ import logging
 from capstone import CS_ARCH_ARM, CS_MODE_THUMB, CS_MODE_V8, Cs
 
 from explorer.hookers.abstract_hooker import AbstractHooker
-from explorer.hookers.arm_hooks import SimBXNS, SimSG, SimTestTarget
-from explorer.hookers.general_hooks import SimNop
+from explorer.hookers.arm_hooks import SimBKPT, SimBX, SimBXNS, SimSG, SimTestTarget
 
 logger = logging.getLogger(__name__)
 
@@ -44,12 +43,18 @@ class Armv8MHooker(AbstractHooker):
                 self.project.hook(instr.address, hook, length=instr.size)
             elif instr.mnemonic == "bkpt":
                 logger.info(f"Found BKPT instruction at address 0x{instr.address:x} {instr.size}. Hooking now...")
-
-                hook = SimNop(bytes_to_skip=instr.size, mnemonic=instr.mnemonic, opstr=instr.op_str)
+                hook = SimBKPT()
+                # hook = SimNop(bytes_to_skip=instr.size, mnemonic=instr.mnemonic, opstr=instr.op_str)
                 self.project.hook(instr.address, hook, length=instr.size)
-            elif instr.mnemonic == "blxns" or instr.mnemonic == "bxns":
+            elif instr.mnemonic in ["blxns", "bxns"]:
                 logger.info(f"Found {instr.mnemonic.upper()} instruction at address 0x{instr.address:x}. Hooking now...")
-                hook = SimBXNS(sg_instr_addrs=sg_instr_addrs)
+                reg = instr.reg_name(instr.operands[0].value.reg)
+                hook = SimBXNS(jmp_reg=reg, l_flag=(instr.mnemonic.lower() == "blxns"))
                 self.project.hook(instr.address, hook, length=instr.size)
+            elif instr.mnemonic in ["bx", "blx"]:
+                logger.info(f"Found {instr.mnemonic.upper()} instruction at address 0x{instr.address:x}. Hooking now...")
+                ret = instr.reg_name(instr.operands[0].value.reg)
+                hook = SimBX(ret=ret, l_flag=(instr.mnemonic.lower() == "blx"))
+                # self.project.hook(instr.address, hook, length=instr.size)
 
         self.init_state.globals["sg_instr_addrs"] = sg_instr_addrs

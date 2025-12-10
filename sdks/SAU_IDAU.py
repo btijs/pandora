@@ -214,11 +214,13 @@ class BaseAttributionUnit[T: AttributionUnitRegion]:
                     regions.append(temp_region)
 
                 # Get overlapping part
+                # Overlapping is always secure
                 temp_region = copy(curr_region)
                 temp_region.region_number = -1
                 temp_region.start_address = overlap_start
                 temp_region.end_address = overlap_end
                 temp_region.security_state = SecurityState.SECURE
+                temp_region.is_exempted = False
                 regions.append(temp_region)
 
                 # Update current or next region to remaining part (after overlap)
@@ -293,7 +295,7 @@ class IDAU(BaseAttributionUnit[IDAURegion]):
             raise FileNotFoundError(f"IDAU configuration for file '{filename}' not found.")
         with Path(filename).open() as f:
             idau_config = json5.load(f)
-            for i, region in enumerate(idau_config["regions"]):
+            for region in idau_config["regions"]:
                 security_attribute = region["security_attribute"]
                 if security_attribute == "nonsecure":
                     sec_state = SecurityState.NONSECURE
@@ -301,9 +303,6 @@ class IDAU(BaseAttributionUnit[IDAURegion]):
                     sec_state = SecurityState.SECURE
                 elif security_attribute == "nonsecure_callable":
                     sec_state = SecurityState.NONSECURE_CALLABLE
-                elif security_attribute == "exempted":
-                    # TODO: there are also architectural exemptions, handle those too
-                    sec_state = SecurityState.SECURE
                 else:
                     raise ValueError(f"Unknown security attribute: {security_attribute}")
 
@@ -313,7 +312,7 @@ class IDAU(BaseAttributionUnit[IDAURegion]):
                         start_address=region["start_address"],
                         end_address=region["end_address"],
                         security_state=sec_state,
-                        is_exempted=(security_attribute == "exempted"),
+                        is_exempted=region.get("exempted", False),
                     ),
                 )
 
@@ -389,6 +388,7 @@ class SAU(BaseAttributionUnit[SAURegion]):
             #   bits [4:2] are reserved,
             #   bit [1] is non-secure-callable
             #   bit [0] is ENABLE
+            # TODO: bits [4:2] are RAZ/WI, so maybe change this here?
             self.current_sau_end = value & 0xFFFFFFE0 | 0b11111
             self.current_sau_attr = (value & 0b10) >> 1
             sau_enable = value & 0b1
@@ -492,11 +492,15 @@ class FullAttributionUnit(SimStatePlugin):
         t_flag: bool,
     ) -> ast.BV:
         # TODO: make use of A and T flags
+        if current_security != ProcessorSecurityState.SECURE:
+            raise NotImplementedError("TT instruction variants executed from Non-secure state are not yet implemented.")
 
         regions = self.get_flattened_regions()
+
         idau_region_nr = _nested_attribution_check(
             address,
             regions,
+            # If region nr == -1, this means the region is not covered by the IDAU or that it is exempted, IDAU region number should be set to 0
             lambda r: claripy.If(
                 r.idau_region_number == -1,
                 claripy.BVV(0, 8),
@@ -514,7 +518,12 @@ class FullAttributionUnit(SimStatePlugin):
         sau_region_nr = _nested_attribution_check(
             address,
             regions,
-            lambda r: claripy.If(r.sau_region_number == -1, claripy.BVV(0, 8), r.sau_region_number),
+            # If region nr == -1, this means the region is not covered by the SAU, SAU region number should be set to 0
+            lambda r: claripy.If(
+                r.sau_region_number == -1,
+                claripy.BVV(0, 8),
+                r.sau_region_number,
+            ),
             claripy.BVV(0, 8),
         )
         sau_region_valid = _nested_attribution_check(
@@ -531,7 +540,7 @@ class FullAttributionUnit(SimStatePlugin):
             claripy.BoolV(True),  # it shouldn't matter what default is here, as all address space should be covered
         )
 
-        logger.info(f"TT lookup for address 0x{address} returned:\n\tIDAU region nr={idau_region_nr},\n\tIDAU valid={idau_region_valid},\n\tSAU region nr={sau_region_nr},\n\tSAU valid={sau_region_valid},\n\tsecure={secure}")
+        logger.info(f"TT lookup for address {address} returned:\n\tIDAU region nr={idau_region_nr},\n\tIDAU valid={idau_region_valid},\n\tSAU region nr={sau_region_nr},\n\tSAU valid={sau_region_valid},\n\tsecure={secure}")
 
         # MPU =====================================================================================
         # TODO: implement the MPU
@@ -540,13 +549,24 @@ class FullAttributionUnit(SimStatePlugin):
         # If multiple MPU regions match, this is RAZ
         # If T-flag is set, return permissions for unprivileged access
         # Otherwise, return permissions for current privilege level
-        readable = claripy.BoolV(True)  # noqa
+
+        # If it is S or NSC, and checked for NS access (A flag), it is not readable
+        # If it is S or NSC, and checked for S access (no A flag), it is readable
+        # If it is NS, it is readable
+        readable = _nested_attribution_check(
+            address,
+            regions,
+            lambda r: not a_flag or r.security_state == SecurityState.NONSECURE,
+            claripy.BoolV(False),
+        )
 
         # If caller is unprivileged and A-flag is not set, this is RAZ
         # If multiple MPU regions match, this is RAZ
         # If T-flag is set, return permissions for unprivileged access
         # Otherwise, return permissions for current privilege level
-        readwritable = claripy.BoolV(True)  # noqa
+
+        # Same as readable, because MPU not implemented
+        readwritable = readable
 
         # Non-secure readable. Equal to R AND NOT S.
         # This field is only valid if the variant of the TT group of instructions was executed from
@@ -599,6 +619,11 @@ class FullAttributionUnit(SimStatePlugin):
         return response.get_full_bv()
 
     def get_flattened_regions(self) -> Sequence[FlattenedRegion]:
+        """
+        Get merged flattened regions from both IDAU and SAU.
+        Regions can be marked as Exempted, Secure, Non-secure-callable or Non-secure.
+        Region number -1 indicates that the region is not covered by that attribution unit or that it is exempted.
+        """
         idau_regions = self.idau.get_flattened_regions()
         sau_regions = self.sau.get_flattened_regions()
 
@@ -631,7 +656,6 @@ class FullAttributionUnit(SimStatePlugin):
                 sec = idau_sec
                 idau_region_nr = -1
                 sau_region_nr = -1
-
             elif idau_sec == SecurityState.SECURE or sau_sec == SecurityState.SECURE:
                 sec = SecurityState.SECURE
             elif idau_sec == SecurityState.NONSECURE_CALLABLE or sau_sec == SecurityState.NONSECURE_CALLABLE:
