@@ -55,7 +55,7 @@ class ControlFlowSanitizationPlugin(BasePlugin):
         shortname = self.shortname
 
     def init_angr_breakpoints(self, init_state):
-        init_state.inspect.b("exit", when=angr.BP_BEFORE, action=check_tainted_jump)
+        init_state.inspect.b("exit", when=angr.BP_AFTER, action=check_tainted_jump)
 
 
 def check_tainted_jump(state):
@@ -65,6 +65,10 @@ def check_tainted_jump(state):
     2. target that is tainted AND target may lie inside or outside enclave => report CRITICAL
     3. target that is tainted AND restricted to fully inside enclave => report WARNING
     """
+
+    if not state.satisfiable():
+        return
+
     target = state.inspect.exit_target
     # NOTE: as we don't want to bother decoding the length of the target
     # instruction, we safely over-approximate this here to the maximum length
@@ -92,7 +96,7 @@ def check_tainted_jump(state):
         # page fault by SGX hardware. We still report a warning, as this should
         # normally not happen in sane, well-programmed enclaves.
         if not sdk.addr_in_executable_range(target):
-            info = f"Concrete {kind} target in non-executable memory"
+            info = f"Concrete {kind} target to {target:#x} in non-executable memory"
             severity = logging.WARNING
             _report_error(state, target, target_len, symbolic, tainted, info, severity)
 
@@ -100,7 +104,7 @@ def check_tainted_jump(state):
             # Case 1: concrete target unmeasured AND uninitialized
             if sdk.addr_in_unmeasured_uninitialized_page(target, target_len):
                 if memory_is_tainted(state, target, target_len):
-                    info = f"Concrete {kind} target in unmeasured uninitialized memory"
+                    info = f"Concrete {kind} target to {target:#x} in unmeasured uninitialized memory"
                     severity = logging.CRITICAL
                     _report_error(state, target, target_len, symbolic, tainted, info, severity)
 
@@ -176,7 +180,6 @@ def _report_error(
     target_min = state.solver.min(target)
     target_range = f"[{format_ast(target_min)}, {format_ast(target_max)}]"
     target_in_enclave = buffer_entirely_inside_enclave(state, target, target_len)
-
     extra = {"Target": target, "Attacker tainted": tainted, "Symbolic": symbolic, "Target range": target_range, "Target entirely inside enclave": target_in_enclave}
 
     if extra_info is not None:
