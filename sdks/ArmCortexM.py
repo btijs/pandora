@@ -55,11 +55,7 @@ class ArmCortexM(AbstractSDK):
         # Setup initial PC
         set_reg_value(eenter_state, "pc", self.get_entry_addr())
 
-        # TODO: find out more about these registers
-        eenter_state.regs.cc_op = 0  # OP_COPY
-        eenter_state.regs.cc_dep1 = 0
-
-        eenter_state.regs.itstate = 0
+        set_reg_value(eenter_state, "control", 0b10)  # Use PSP and unprivileged mode
 
         eenter_state.globals["secure"] = True
 

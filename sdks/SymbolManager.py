@@ -33,7 +33,7 @@ class SymbolManager(metaclass=Singleton):
 
     def _create_objdump(self, arch):
         bin = "objdump"
-        if "x86" not in arch:
+        if "x86" not in arch and "arm" not in arch.lower():
             # XXX we keep a local copy of MSPGCC msp430-objdump 2.21.1 (mspgcc LTS 20120406 unpatched)
             # as newer objdump seems to forcibly interpret Sancus instructions as 20-bit CALLA instructions..
             bin = f"./bin/{arch.lower()}-objdump"
