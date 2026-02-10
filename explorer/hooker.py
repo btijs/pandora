@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 # XXX this could also be passed via the SDKManager if we get >1 TEE-specific hooker per architecture
-HOOKERS = {"x86_64": SGXHooker, "msp430": SancusHooker, "arm-v8-m": Armv8MHooker}
+HOOKERS = {"x86_64": SGXHooker, "msp430": SancusHooker, "ARMCortexM": Armv8MHooker}
 
 
 class HookerManager:

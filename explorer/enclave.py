@@ -6,9 +6,8 @@ from functools import lru_cache
 import claripy
 from angr import BP_AFTER, BP_BEFORE
 
-from explorer import taint
 from sdks.SDKManager import SDKManager
-from utilities.angr_helper import get_reg_size, set_reg_value
+from utilities.angr_helper import attacker_taint_regs
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +22,7 @@ def eenter(eenter_state):
     # Start the setup by marking the state global as not active. This should disable all breakpoints like tainting
     eenter_state.globals["pandora_active"] = False
 
-    # Initialize all registers as being attacker tainted
-    for reg_name in eenter_state.project.arch.register_names.values():
-        size = get_reg_size(eenter_state, reg_name)
-        reg = taint.get_tainted_reg(eenter_state, reg_name, size * 8)
-        set_reg_value(eenter_state, reg_name, reg)
+    attacker_taint_regs(eenter_state, SDKManager().get_safe_registers())
 
     # After tainting all registers, fill registers that are overwritten by EENTER
     SDKManager().init_eenter_state(eenter_state)

@@ -46,7 +46,10 @@ class ArmCortexM(AbstractSDK):
 
     @staticmethod
     def get_angr_arch():
-        return "arm-v8-m"
+        return "ARMCortexM"
+
+    def get_safe_registers(self) -> list[str]:
+        return super().get_safe_registers() + ["control", "cpsr", "cc_op", "cc_dep1", "itstate"]
 
     def init_eenter_state(self, eenter_state):
         # Setup initial PC

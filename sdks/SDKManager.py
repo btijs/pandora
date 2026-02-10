@@ -375,3 +375,9 @@ class SDKManager(metaclass=Singleton):
             raise RuntimeError("SDK not initialized yet.")
         else:
             return self.sdk.is_thumb_mode()
+
+    def get_safe_registers(self) -> list[str]:
+        if self.sdk is None:
+            raise RuntimeError("SDK not initialized yet.")
+        else:
+            return self.sdk.get_safe_registers()

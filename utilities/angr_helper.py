@@ -192,3 +192,15 @@ def get_reg_name(state, reg_offset):
     parent_offset = max([x for x in reg_dict.keys() if x < reg_offset])
     parent_name = reg_dict[parent_offset]
     return parent_name
+
+
+def attacker_taint_regs(eenter_state, safe_registers):
+    """
+    Initialize all registers as being attacker tainted
+    """
+    for reg_name in eenter_state.project.arch.register_names.values():
+        if reg_name in safe_registers:
+            continue
+        size = get_reg_size(eenter_state, reg_name)
+        reg = taint.get_tainted_reg(eenter_state, reg_name, size * 8)
+        set_reg_value(eenter_state, reg_name, reg)

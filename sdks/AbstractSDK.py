@@ -100,6 +100,13 @@ class AbstractSDK:
         """
         return False
 
+    def get_safe_registers(self) -> list[str]:
+        """
+        Returns a list of registers that are not attacker controlled.
+        For example, in ARM Cortex-M, the banked registers are safe
+        """
+        return []
+
 
 class HasJSONLayout:
     """
