@@ -157,12 +157,12 @@ def get_int_from_bytes(bytestring, offset, size):
     return int.from_bytes(bytestring[offset : offset + size], "little")  # intel bytes use LE
 
 
-def set_reg_value(state, reg_name, value):
+def set_reg_value(state, reg_name, value, inspect=False):
     """
     Writes the value to the register without triggering the reg_write breakpoints
     """
     (reg_offset, reg_size) = state.project.arch.registers[reg_name]
-    state.registers.store(reg_offset, value)
+    state.registers.store(reg_offset, value, inspect=inspect)
 
 
 def get_reg_size(state, reg_name):
