@@ -49,4 +49,8 @@ class HookerManager:
                 self.hooker.hook_mem_region(offset, count)
                 loop_count += 1
                 live_console.update(task, completed=loop_count)
+
+        # Hook specific symbols if needed
+        self.hooker.hook_symbols()
+
         logger.info("Hooking instructions completed.")
