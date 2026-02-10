@@ -226,7 +226,7 @@ class HTMLFormatter(BaseFormatter):
         self.create_box(escape_ansi(info), title, "exclamation-triangle", "warning")
 
     def create_badge(self, lbl, style):
-        return tags.span(lbl, cls=f"badge rounded-pill {style}")
+        return tags.span(lbl, cls=f"badge rounded-pill {style}", style="text-overflow: ellipsis; overflow: hidden; display: inline-block; max-width: 750px;")
 
     def create_badges(self, badges_dict):
         """
