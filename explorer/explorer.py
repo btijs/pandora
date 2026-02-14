@@ -7,7 +7,7 @@ import pandora_options as po
 import ui.log_format as log_format
 import ui.log_setup
 from explorer.engine.PandoraEngine import PandoraEngine
-from ui.action import UserAction
+from ui.action import UserActionWithLevel
 from ui.action_manager import ActionManager
 from ui.log_format import get_state_backtrace_compact, get_state_backtrace_formatted
 from utilities.Singleton import Singleton
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 class AbstractExplorer(metaclass=Singleton):
-    def __init__(self, binary_path="", action=UserAction.NONE, base_addr=0, angr_backend="elf", angr_arch="x86_64"):
+    def __init__(self, binary_path="", action=UserActionWithLevel(), base_addr=0, angr_backend="elf", angr_arch="x86_64"):
         self.action = action
         self.binary_path = str(binary_path)
         self.base_addr = base_addr
@@ -197,7 +197,7 @@ class BasicBlockExplorer(AbstractExplorer):
                     pandora_options[po.PANDORA_EXPLORE_REENTRY_COUNT],  # Take reentry count from options
                     self.initial_state,
                     {self.initial_state},  # Prime the unique set with the init state
-                    user_action=ActionManager().actions["reentry"],
+                    user_action=ActionManager().leveled_actions["reentry"],
                 )
             )
 

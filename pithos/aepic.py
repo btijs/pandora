@@ -5,14 +5,14 @@ from claripy import BVV
 
 from explorer.enclave import buffer_entirely_inside_enclave, buffer_touches_enclave
 from pithos.BasePlugin import BasePlugin
-from ui.action import UserAction
+from ui.action import UserActionWithLevel
 from ui.report import Reporter
 from utilities.angr_helper import concretize_value_or_fail
 
 logger = logging.getLogger(__name__)
 
 # Global variables used by the hooks. Initialized in PointerSanitizationPlugin
-taint_action = UserAction.NONE
+taint_action = UserActionWithLevel()
 plugin_shortname = "aepic"
 
 

@@ -91,7 +91,7 @@ class ControlFlowTracker(ExplorationTechnique):
                     extra_sections=extra_sec,
                 )
                 # Trigger a user action if requested
-                ActionManager().actions["system"](info="Aborted branch due to illegal jump", state=s)
+                ActionManager().leveled_actions["system"](info="Aborted branch due to illegal jump", state=s)
 
         if len(wrong_jumps) > 0:
             simgr.move(from_stash="active", to_stash="incorrect", filter_func=lambda x: x in wrong_jumps)

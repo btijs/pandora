@@ -4,7 +4,7 @@ import angr
 from angr import ExplorationTechnique
 
 from explorer.enclave import eenter
-from ui.action import UserAction
+from ui.action import UserActionWithLevel
 from ui.log_format import log_always
 
 logger = logging.getLogger(__name__)
@@ -15,7 +15,7 @@ class EnclaveReentry(ExplorationTechnique):
     Performs the reentry of the enclave for states that are marked as eexited AND are unique.
     """
 
-    def __init__(self, enclave_reentry_count: int, init_state: angr.SimState, unique_state_list: set, user_action: UserAction):
+    def __init__(self, enclave_reentry_count: int, init_state: angr.SimState, unique_state_list: set, user_action: UserActionWithLevel):
         super().__init__()
 
         self.enclave_reentry_count = enclave_reentry_count

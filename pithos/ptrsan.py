@@ -5,7 +5,7 @@ import claripy
 
 from explorer import taint
 from pithos.BasePlugin import BasePlugin
-from ui.action import UserAction
+from ui.action import UserActionWithLevel
 from ui.log_format import (
     format_ast,
 )
@@ -15,7 +15,7 @@ from utilities.angr_helper import get_reg_value
 logger = logging.getLogger(__name__)
 
 # Global variables used by the hooks.
-taint_action = UserAction.NONE
+taint_action = UserActionWithLevel()
 shortname = "ptr"
 
 
@@ -208,4 +208,4 @@ def _report_error(
     reporter.report(info, state, logger, shortname, severity, extra)
 
     # Run taint action if requested
-    taint_action(state=state, info=info, unique=unique)
+    taint_action(state=state, info=info, unique=unique, level=severity)

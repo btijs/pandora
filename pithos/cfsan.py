@@ -6,7 +6,7 @@ from explorer import taint
 from explorer.enclave import buffer_entirely_inside_enclave, buffer_touches_enclave
 from pithos.BasePlugin import BasePlugin
 from sdks.SDKManager import SDKManager
-from ui.action import UserAction
+from ui.action import UserActionWithLevel
 from ui.log_format import format_asm, format_ast
 from ui.report import Reporter
 from utilities.angr_helper import memory_is_tainted
@@ -14,7 +14,7 @@ from utilities.angr_helper import memory_is_tainted
 logger = logging.getLogger(__name__)
 
 # Global variables used by the hooks.
-taint_action = UserAction.NONE
+taint_action = UserActionWithLevel()
 shortname = "cf"
 
 
@@ -195,4 +195,4 @@ def _report_error(
 
     if severity >= logging.INFO:
         # Run taint action if requested
-        taint_action(state=state, info=info, unique=unique)
+        taint_action(state=state, info=info, unique=unique, level=severity)

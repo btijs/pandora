@@ -3,6 +3,7 @@
 import atexit
 import json
 import logging
+import re
 import sys
 from dataclasses import dataclass
 from itertools import count
@@ -127,7 +128,7 @@ def pandora_setup(pandora_ctx: PandoraContext, binary_path: Path):
         sdk_mgr = SDKManager(binary_path, pandora_ctx.sdk_detection_type, elf_file=pandora_ctx.sdk_elf_file, sdk_json_file=pandora_ctx.sdk_json_file, angr_log_level=pandora_ctx.angr_log_level, idau_json_file=pandora_ctx.idau_json_file)
 
         # Load binary in angr and initialize the state. Load binary with offset defined by detected SDK
-        my_explorer = BasicBlockExplorer(binary_path, action_mgr.actions["explorer"], sdk_mgr.get_load_addr(), angr_backend=sdk_mgr.get_angr_backend(), angr_arch=sdk_mgr.get_angr_arch())
+        my_explorer = BasicBlockExplorer(binary_path, action_mgr.leveled_actions["explorer"], sdk_mgr.get_load_addr(), angr_backend=sdk_mgr.get_angr_backend(), angr_arch=sdk_mgr.get_angr_arch())
         init_state = my_explorer.get_init_state()
 
         # Initialize sdk with specific initial state
@@ -148,7 +149,7 @@ def pandora_setup(pandora_ctx: PandoraContext, binary_path: Path):
         reporter = ui.report.Reporter(binary_path, sdk_mgr.get_sdk_name(), pandora_ctx.report_level)
 
         # Init requested plugins
-        PluginManager(init_state, pandora_ctx.plugins, action_mgr.actions, reporter)
+        PluginManager(init_state, pandora_ctx.plugins, action_mgr.leveled_actions, reporter)
 
         # Give SDKs one last chance to modify the init state
         sdk_mgr.prepare_init_state(init_state)
@@ -210,7 +211,7 @@ def pandora_explore(pandora_ctx: PandoraContext):
     my_explorer = explorer.BasicBlockExplorer()
     sdk_mgr = SDKManager()
 
-    action_mgr.actions["start"](info="System loaded. Start hook before symbolic execution starts.", state={"init_state": my_explorer.get_init_state(), "sdk": sdk_mgr, "explorer": my_explorer, "hooker": hooker})
+    action_mgr.leveled_actions["start"](info="System loaded. Start hook before symbolic execution starts.", state={"init_state": my_explorer.get_init_state(), "sdk": sdk_mgr, "explorer": my_explorer, "hooker": hooker})
 
     logger.info("Starting symbolic execution..'")
     # Prepare an iterator that either counts upward for an unknown step count or that goes over the number of steps.
@@ -274,7 +275,7 @@ def pandora_explore(pandora_ctx: PandoraContext):
             unhandled_errors = errored_states[handled_error_states:]
             if unhandled_errors:
                 logger.critical(f"Some states errored! Errored states: {unhandled_errors}")
-                action_mgr.actions["error"](info="[errored states]", state=unhandled_errors)
+                action_mgr.leveled_actions["error"](info="[errored states]", state=unhandled_errors)
                 # Append the unhandled errors to the set of handled errors to ignore them in the next iteration.
                 handled_error_states = len(errored_states)
 
@@ -331,7 +332,7 @@ def pandora_explore(pandora_ctx: PandoraContext):
         log_always(logger, "User requested exit. Exiting now..")
     else:
         # Only do exit action if user did not already request the exit themselves
-        action_mgr.actions["exit"](info="Symbolic execution finished. Exit hook before shutting down.", state={"init_state": my_explorer.get_init_state(), "sdk": sdk_mgr, "explorer": my_explorer, "errored_states": errored_states})
+        action_mgr.leveled_actions["exit"](info="Symbolic execution finished. Exit hook before shutting down.", state={"init_state": my_explorer.get_init_state(), "sdk": sdk_mgr, "explorer": my_explorer, "errored_states": errored_states})
 
 
 def pandora_report(pandora_ctx: PandoraContext, log_path: Path):
@@ -471,14 +472,26 @@ def action_callback(ctx: typer.Context, value: List | None):
 
     action_list = []
     for i in value:
-        split_val = i.split("=")
-        if len(split_val) != 2:
-            raise typer.BadParameter('Give --action only as a string of "<event>=<action>"')
+        # event[level]=action with [level] being optional.
+        regex = r"^([a-zA-Z0-9_]+)(\[([a-zA-Z0-9_]+)\])?=([a-zA-Z0-9_]+)$"
+        match = re.match(regex, i)
+        if not match:
+            raise typer.BadParameter('Give --action only as a string of "event[level]=action" with optional [level]')
 
-        validate_opt(split_val[0], ActionManager.get_event_names())
-        validate_opt(split_val[1], ActionManager.get_action_names(), context=f"'{split_val[0]}' action: ")
+        # split_val = i.split("=")
+        # if len(split_val) != 2:
+        #     raise typer.BadParameter('Give --action only as a string of "<event>=<action>"')
 
-        action_list.append(split_val)
+        event = match.group(1)
+        level = match.group(3) if match.group(3) else None
+        action = match.group(4)
+
+        validate_opt(event, ActionManager.get_event_names())
+        if level:
+            validate_opt(level, LogLevel.get_log_levels(), context=f"'{event}' event level: ")
+        validate_opt(action, ActionManager.get_action_names(), context=f"'{event}' action: ")
+
+        action_list.append((event, level, action))
     return action_list
 
 
@@ -520,11 +533,16 @@ def format_help_options(info, opts):
     spacing and | delimitators in the help text..
     """
     s = f"Possible values for the [underline]{info} key[/] are:"
-    maxname = len(max(opts.keys(), key=len))
     newline = "\n\n"
     s += newline
-    for name, desc in opts.items():
-        s += f":left_arrow_curving_right:  [bold]{name.ljust(maxname)}[/] -- {desc}" + newline
+    if type(opts) is dict:
+        maxname = len(max(opts.keys(), key=len))
+        for name, desc in opts.items():
+            s += f":left_arrow_curving_right:  [bold]{name.ljust(maxname)}[/] -- {desc}" + newline
+    elif type(opts) is list:
+        s += ":left_arrow_curving_right:  "
+        s += "|".join([f"[bold]{o}[/]" for o in opts])
+        s += newline
     return s
 
 
@@ -617,8 +635,10 @@ def main_callback(
         "-a",
         "--action",
         callback=action_callback,
-        help="Adds an action bound to a specific event via the format [bold]event=action[/]. "
+        help="Adds an action bound to a specific event via the format [bold]event\\[level]=action[/].\n\n"
+        + " The level is optional and can be used to specify the minimum log level for the event to trigger the action."
         + format_help_options("event", {**ActionManager.get_system_events(), **{p: f"For events reported by the '{p}' plugin (see below)." for p in PluginManager.get_plugin_names()}})
+        + format_help_options("level", LogLevel.get_log_levels())
         + format_help_options("action", UserAction.get_action_help()),
         rich_help_panel="Exploration options",
     ),

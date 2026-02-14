@@ -4,6 +4,7 @@ import explorer.hookers.x86_hooks
 import ui.log_format as log_fmt
 from pithos import abisan, aepic, cfsan, debug, ptrsan
 from sdks.SDKManager import SDKManager
+from ui.action import UserActionWithLevel
 
 plugins = {"abi": abisan.ABISanitizationPlugin, "ptr": ptrsan.PointerSanitizationPlugin, "cf": cfsan.ControlFlowSanitizationPlugin, "dbg": debug.DebugPlugin, "aepic": aepic.AepicPlugin}
 
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class PluginManager:
-    def __init__(self, init_state, requested_plugins: list, plugin_actions, reporter):
+    def __init__(self, init_state, requested_plugins: list, plugin_leveled_actions: dict[str, UserActionWithLevel], reporter):
         if "all" in requested_plugins:
             logger.info(f"Activating {log_fmt.format_warning('all')} plugins...")
             requested_plugins = plugins.keys()
@@ -31,9 +32,9 @@ class PluginManager:
                 logger.warning(f"\tPlugin {log_fmt.format_inline_header(p)} unsupported for arch {angr_arch}; skipping..")
                 continue
 
-            action = plugin_actions[p]
-            self.active_plugins[p] = plugins[p](init_state, reporter, action, shortname=p)
-            logger.info(f"\tActivated plugin {log_fmt.format_inline_header(p)} with user action {log_fmt.format_inline_header(action.name)}")
+            leveled_action = plugin_leveled_actions[p]
+            self.active_plugins[p] = plugins[p](init_state, reporter, leveled_action, shortname=p)
+            logger.info(f"\tActivated plugin {log_fmt.format_inline_header(p)} with user action {log_fmt.format_inline_header(leveled_action.user_action.name)}")
 
         # Lastly, also inform the x86 SimProcedures about the reporter object to use.
         # We have to do this only now since otherwise we have a circular import

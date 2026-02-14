@@ -27,9 +27,6 @@ class UserAction(str, Enum):
             rv[act.value] = act.get_help_text()
         return rv
 
-    def __init__(self, value):
-        self.only_unique = False
-
     def get_help_text(self):
         if self.value == "exit":
             return "Terminates the program."
@@ -40,16 +37,25 @@ class UserAction(str, Enum):
         elif self.value == "none":
             return "Do nothing (default)."
 
+
+class UserActionWithLevel:
+    def __init__(self, level: int = 0, user_action: UserAction = UserAction.NONE) -> None:
+        self.level = level
+        self.user_action = user_action
+        self.only_unique = False
+
     def __call__(self, *args, **kwargs):
         """
         Calls the UserAction, passing named optional arguments:
             'state'     -- for use in interactive shell
             'unique'    -- for limiting actions on duplicates
             'info'      -- for indicating reason for action in log
+            'level'     -- for indicating log level of reason in log
         """
         state = kwargs.get("state", None)
         unique = kwargs.get("unique", True)
         info = format_header(kwargs.get("info", ""))
+        level = kwargs.get("level", None)
 
         def abort_execution():
             log_always(logger, "User requested to abort. The current step will still be completed which may trigger another shell or two.")
@@ -58,14 +64,19 @@ class UserAction(str, Enum):
         if self.only_unique and not unique:
             return
 
-        if self.value == "none":
+        if self.user_action.value == "none":
             return
 
-        elif self.value == "exit":
+        elif level and self.level and level < self.level:
+            # Check level only after checking action is not NONE, for performance reasons.
+            logger.debug(f"Skipping action {self.user_action.value} because level {level} is below required level {self.level}")
+            return
+
+        elif self.user_action.value == "exit":
             logger.critical(f"{info} Exiting..")
             exit()
 
-        elif self.value == "shell":
+        elif self.user_action.value == "shell":
             log_always(logger, f"{info} Spawning interactive Python shell:")
             if state:
                 # log_always seems to have issues logging dicts right now, so use logger.critical here.
@@ -82,9 +93,9 @@ class UserAction(str, Enum):
 
             IPython.embed()
 
-        elif self.value == "break":
+        elif self.user_action.value == "break":
             logger.critical(f"{info} Breaking. Press any key to continue..")
             input()
 
         if not self.only_unique and not unique:
-            self.only_unique = typer.confirm(f"Do you want to only {self.value} on unique symbols?")
+            self.only_unique = typer.confirm(f"Do you want to only {self.user_action.value} on unique symbols?")

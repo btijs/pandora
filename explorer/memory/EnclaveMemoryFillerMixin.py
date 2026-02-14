@@ -53,7 +53,7 @@ class EnclaveMemoryFillerMixin(MemoryMixin):
                 }
                 Reporter().report(info, self.state, logger, ui.report.SYSTEM_EVENTS_REPORT_NAME, severity=logging.WARNING, extra_info=extra)
                 # Trigger a user action if requested
-                ActionManager().actions["system"](info=info, state=self.state)
+                ActionManager().leveled_actions["system"](info=info, state=self.state)
 
             return mem
 

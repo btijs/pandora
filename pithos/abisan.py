@@ -7,7 +7,7 @@ from explorer.hookers.x86_hooks import x86_arch_regs, x86_data_regs, x86_privile
 from pithos.BasePlugin import BasePlugin
 from sdks.SDKManager import SDKManager
 from sdks.SymbolManager import SymbolManager
-from ui.action import UserAction
+from ui.action import UserActionWithLevel
 from ui.log_format import dump_regs, format_fields, format_header
 from ui.report import Reporter
 from utilities.angr_helper import (
@@ -20,7 +20,7 @@ from utilities.angr_helper import (
     set_reg_value,
 )
 
-abi_action = UserAction.NONE
+abi_action = UserActionWithLevel()
 abi_shortname = "abi"
 ignored_regs = {}
 
@@ -48,7 +48,7 @@ class ABISanitizationPlugin(BasePlugin):
 
     """
 
-    def __init__(self, init_state, reporter, usr_act=UserAction.NONE, shortname=abi_shortname):
+    def __init__(self, init_state, reporter, usr_act=UserActionWithLevel(), shortname=abi_shortname):
         self.angr_arch = SDKManager().get_angr_arch()
         super().__init__(init_state, reporter, usr_act, shortname)
 
@@ -131,7 +131,7 @@ def reg_read_hook(state):
         dump_regs(state, logger, logging.INFO, only_gen_purpose=True)
         Reporter().report(f"Attacker-tainted read from {reg_name.upper()} register", state, logger, abi_shortname, logging.CRITICAL, extra)
         logger.info("")
-        abi_action(state=state, info="[abi-read]")
+        abi_action(state=state, info="[abi-read]", level=logging.CRITICAL)
 
 
 api_addr = None
@@ -269,7 +269,7 @@ def break_abi_to_api(state):
 
             if len(extra.keys()) > 0:
                 Reporter().report(f"{len(extra.keys())} attacker-tainted entry registers" + extra_info, state, logger, abi_shortname, lvl, extra, extra_sections=extra_sec)
-                abi_action(state=state, info=f"[abi2api] And have {len(extra.keys())} issues to report.")
+                abi_action(state=state, info=f"[abi2api] And have {len(extra.keys())} issues to report.", level=lvl)
 
             logger.debug("--- ABI2API investigation complete ---")
 
@@ -327,7 +327,7 @@ def break_abi_eexit(state):
                     Reporter().report(f"On EExit: Potentially secret-tainted {reg_name.upper()} register", state, logger, abi_shortname, logging.WARNING, extra)
 
         logger.debug("--- EEXIT investigation complete ---")
-        abi_action(info="[abi-eexit]")
+        abi_action(info="[abi-eexit]", level=logging.WARNING)
 
 
 def break_abi_eexit_msp430(state):
@@ -350,4 +350,4 @@ def break_abi_eexit_msp430(state):
             Reporter().report(f"On EEXIT: Unscrubbed {reg_name.upper()} register", state, logger, abi_shortname, lvl, extra)
 
     logger.debug("--- EEXIT investigation complete ---")
-    abi_action(info="[abi-eexit]")
+    abi_action(info="[abi-eexit]", level=logging.WARNING)

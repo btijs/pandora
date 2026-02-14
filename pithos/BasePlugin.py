@@ -1,4 +1,4 @@
-from ui.action import UserAction
+from ui.action import UserActionWithLevel
 
 
 class BasePlugin:
@@ -6,7 +6,7 @@ class BasePlugin:
     An abstract base class specifying the interface for Pandora plugins.
     """
 
-    def __init__(self, init_state, reporter, usr_act=UserAction.NONE, shortname=""):
+    def __init__(self, init_state, reporter, usr_act=UserActionWithLevel(), shortname=""):
         self.action = usr_act
         self.reporter = reporter
         self.shortname = shortname
