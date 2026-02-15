@@ -121,7 +121,7 @@ class SimBXNS(SimProcedure):
             raise ValueError("sg_instr_addrs global variable not set in state during SG successor setup.")
 
         logger.info(f"Possible sg instructions: {hexify(sg_instr_addrs)}, jumping to all of them in parallel (different states)")
-        for sg_addr in [sg_instr_addrs[-1]]:  # Only jump to the last SG for testing
+        for sg_addr in sg_instr_addrs:
             new_state = tainted_state.copy()
             new_state.globals["secure"] = False
             self.successors.add_successor(new_state, sg_addr + 1, claripy.true(), "Ijk_Boring")
@@ -241,16 +241,29 @@ class SimMemSet(SimProcedure):
         logger.info(f"Hooked memset at address {ret_addr}, dest: {dest}, val: {val}, count: {count}")
 
         # Get concrete values if possible
+        # Try all regs separately
         try:
-            dest_conc: int = self.state.solver.eval_one(dest)
-            val_conc: int = self.state.solver.eval_one(val)
-            count_conc: int = self.state.solver.eval_one(count)
-
-            logger.info(f"Performing concrete memset to address {hex(dest_conc)} with value 0x{val_conc:x} for 0x{count_conc:x} bytes.")
-            self.state.memory.store(dest_conc, val_conc, count_conc)
+            dest = self.state.solver.eval_one(dest)
         except (angr.errors.SimUnsatError, angr.errors.SimValueError):
-            logger.critical("One of the arguments to memset is symbolic, trying symbolic memset.")
-            self.state.memory.store(dest, 0xAA, count)
+            pass
+        try:
+            val = self.state.solver.eval_one(val)
+        except (angr.errors.SimUnsatError, angr.errors.SimValueError):
+            val = 0xAA  # TODO: make this symbolic
+        try:
+            count = self.state.solver.eval_one(count)
+        except (angr.errors.SimUnsatError, angr.errors.SimValueError):
+            pass
+
+        if isinstance(dest, int) and isinstance(val, int) and isinstance(count, int):
+            logger.info(f"Performing concrete memset to address 0x{dest:x} with value 0x{val:x} for 0x{count:x} bytes.")
+        else:
+            logger.warning("One or more arguments to memset is symbolic, trying symbolic memset to address {dest} with value {val} for {count} bytes.")
+
+        if isinstance(count, int) and count == 0:
+            logger.info("Count is 0, skipping memset.")
+        else:
+            self.state.memory.store(dest, val, count)
 
         # Return dest as per memset specification
         self.ret(dest)
@@ -263,16 +276,28 @@ class SimMemCpy(SimProcedure):
         logger.info(f"Hooked memcpy at address {ret_addr}, dest: {dest}, src: {src}, count: {count}")
 
         # Get concrete values if possible
+        # Try all regs separately
         try:
-            dest_conc = self.state.solver.eval_one(dest)
-            src_conc = self.state.solver.eval_one(src)
-            count_conc = self.state.solver.eval_one(count)
-
-            logger.info(f"Performing concrete memcpy from address {hex(src_conc)} to address {hex(dest_conc)} for 0x{count_conc:x} bytes.")
-            data = self.state.memory.load(src_conc, count_conc)
-            self.state.memory.store(dest_conc, data, count_conc)
+            dest = self.state.solver.eval_one(dest)
         except (angr.errors.SimUnsatError, angr.errors.SimValueError):
-            logger.warning("One of the arguments to memcpy is symbolic, trying symbolic memcpy.")
+            pass
+        try:
+            src = self.state.solver.eval_one(src)
+        except (angr.errors.SimUnsatError, angr.errors.SimValueError):
+            pass
+        try:
+            count = self.state.solver.eval_one(count)
+        except (angr.errors.SimUnsatError, angr.errors.SimValueError):
+            pass
+
+        if isinstance(dest, int) and isinstance(src, int) and isinstance(count, int):
+            logger.info(f"Performing concrete memcpy from address 0x{src:x} to address 0x{dest:x} for 0x{count:x} bytes.")
+        else:
+            logger.warning(f"One or more arguments to memcpy is symbolic, trying symbolic memcpy from address {src} to address {dest} for {count} bytes.")
+
+        if isinstance(count, int) and count == 0:
+            logger.info("Count is 0, skipping memcpy.")
+        else:
             data = self.state.memory.load(src, count)
             self.state.memory.store(dest, data, count)
 
