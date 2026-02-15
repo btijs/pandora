@@ -1,5 +1,10 @@
+import inspect
 import json
 import logging
+
+import IPython
+
+from ui.log_setup import console
 
 import IPython
 
@@ -49,11 +54,23 @@ def hexify(obj):
 
 def auto_embed(*args, **kwargs):
     """
-    This is a helper function to automatically embed an IPython shell, while making sure that any live displays are properly stopped and restarted to avoid issues with the display.
+    This is a helper function to automatically embed an IPython shell, while making sure that
+      - the caller's local variables are available in the IPython shell, so that the user can interact with them.
+      - any live displays are properly stopped and restarted to avoid issues with the display.
     """
 
     # Copy the live stack, because they will get cleared when we stop them, and we want to restart them after embedding.
     lives = console._live_stack.copy()
     [lv.stop() for lv in lives]
-    IPython.embed(*args, **kwargs)
-    [lv.start() for lv in lives]
+
+    # Get the caller's frame to pass to IPython, so that the user has access to the local variables of the caller.
+    frame = inspect.currentframe().f_back
+    try:
+        IPython.embed(
+            user_ns=dict(frame.f_locals),
+            global_ns=dict(frame.f_globals),
+            *args,
+            **kwargs,
+        )
+    finally:
+        [lv.start() for lv in lives]
