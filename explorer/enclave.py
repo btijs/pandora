@@ -61,13 +61,7 @@ restrict the caching to addr and length plus the enclave range.
 
 
 @lru_cache(maxsize=256, typed=False)
-def _check_touches(addr, length, enclave_min_addr, enclave_max_addr, solver):
-    if type(addr) is int:
-        bv_addr = claripy.BVV(addr, 64)
-    else:
-        # If addr is not an int, we can assume it is a BV
-        bv_addr = addr
-
+def _check_touches(bv_addr, length, enclave_min_addr, enclave_max_addr, solver):
     """
     Next, we calculate the maximum address that the buffer may have BEFORE the enclave range.
     This is naturally the last address that even with the full length of the buffer does NOT touch the enclave yet.
@@ -117,9 +111,15 @@ def buffer_touches_enclave(state, addr, length, use_enclave_range: None | [tuple
     if not use_enclave_range:
         use_enclave_range = get_enclave_range()
 
+    if type(addr) is int:
+        bv_addr = claripy.BVV(addr, state.arch.bits)
+    else:
+        # If addr is not an int, we can assume it is a BV
+        bv_addr = addr
+
     # return true iff the buffer does not touch ANY of the contiguous enclave ranges
     # Call this inner function (depending on cache, this call will be fast)
-    return any(_check_touches(addr, length, enclave_min, enclave_max, state.solver) for (enclave_min, enclave_max) in use_enclave_range)
+    return any(_check_touches(bv_addr, length, enclave_min, enclave_max, state.solver) for (enclave_min, enclave_max) in use_enclave_range)
 
 
 """
@@ -130,7 +130,7 @@ Typed is set to default False to get the speedup and not incur additional checks
 
 
 @lru_cache(maxsize=256, typed=False)
-def _check_entirely_inside(addr, length, enclave_min_addr, enclave_max_addr, solver):
+def _check_entirely_inside(bv_addr, length, enclave_min_addr, enclave_max_addr, solver):
     """
     Now calculate the maximum allowed address for the buffer to still fully lie in the enclave.
     This is the address with which the last byte of the buffer is also the last byte of the enclave.
@@ -144,12 +144,6 @@ def _check_entirely_inside(addr, length, enclave_min_addr, enclave_max_addr, sol
     """
     if solver.satisfiable(extra_constraints=[enclave_min_addr >= max_allowed_addr_inside_enclave]):
         return False
-
-    if type(addr) is int:
-        bv_addr = claripy.BVV(addr, 64)
-    else:
-        # If addr is not an int, we can assume it is a BV
-        bv_addr = addr
 
     can_lie_outside = claripy.Or(bv_addr.ULT(enclave_min_addr), bv_addr.UGT(max_allowed_addr_inside_enclave))
 
@@ -168,7 +162,7 @@ def buffer_entirely_inside_enclave(state, address, buffer_length, use_enclave_ra
     Function to determine whether the buffer [addr, addr+length[ always lies *entirely* inside the enclave.
     --> Checks whether: enclave_min <= addr && addr+len-1 <= enclave_max
 
-    :param state: Any state to run this on. Only used to access the solver.
+    :param state: Any state to run this on. Only used to access the solver and the architecture (for bit size of addresses).
     :param address: The start address of the buffer (inclusive)
     :param buffer_length: The length of the buffer so that addr + length is the first address AFTER the buffer.
     :param use_enclave_range: An OPTIONAL list of tuples to overwrite the enclave range or None to use the default enclave range. Use for testing only.
@@ -176,5 +170,11 @@ def buffer_entirely_inside_enclave(state, address, buffer_length, use_enclave_ra
     if not use_enclave_range:
         use_enclave_range = get_enclave_range()
 
+    if type(address) is int:
+        bv_addr = claripy.BVV(address, state.arch.bits)
+    else:
+        # If addr is not an int, we can assume it is a BV
+        bv_addr = address
+
     # return true iff the buffer falls entirely in ANY of the contiguous enclave ranges
-    return any(_check_entirely_inside(address, buffer_length, enclave_min, enclave_max, state.solver) for (enclave_min, enclave_max) in use_enclave_range)
+    return any(_check_entirely_inside(bv_addr, buffer_length, enclave_min, enclave_max, state.solver) for (enclave_min, enclave_max) in use_enclave_range)

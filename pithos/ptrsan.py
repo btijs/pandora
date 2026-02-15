@@ -184,7 +184,7 @@ def _report_error(
     Reports error to the reporter. Appends useful information such as address range and data if available.
     """
     if type(addr) is int:
-        addr = claripy.BVV(addr, 64)
+        addr = claripy.BVV(addr, state.arch.bits)
 
     reporter = Reporter()
     ip = get_reg_value(state, "ip")
