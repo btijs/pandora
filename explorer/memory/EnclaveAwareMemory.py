@@ -24,6 +24,7 @@ from angr.storage.memory_mixins import (
 )
 
 from explorer.memory.EnclaveAwareMixin import EnclaveAwareMixin
+from explorer.memory.EnclaveBreakpointGeneratorMixin import EnclaveBreakpoingGeneratorMixin
 from explorer.memory.EnclaveMemoryFillerMixin import EnclaveMemoryFillerMixin
 
 
@@ -37,9 +38,10 @@ class EnclaveAwareMemory(
     InspectMixinHigh,  # The logic to inspect memory/register reads/writes --> calls ._inspect before/after.
     ActionsMixinHigh,
     UnderconstrainedMixin,
+    EnclaveBreakpoingGeneratorMixin,  # Added for Pandora. Executed before the AddresConcretization to catch untrusted memory accesses.
     SizeConcretizationMixin,
     SizeNormalizationMixin,
-    EnclaveAwareMixin,  # Added for Pandora. Executed before the AddresConcretization to catch untrusted memory accesses.
+    EnclaveAwareMixin,  # Added for Pandora. Executed after the size is concretized to handle untrusted memory accesses.
     AddressConcretizationMixin,
     # InspectMixinLow,
     ActionsMixinLow,
