@@ -2,11 +2,11 @@ import logging
 
 import explorer.hookers.x86_hooks
 import ui.log_format as log_fmt
-from pithos import abisan, aepic, cfsan, debug, ptrsan
+from pithos import abisan, aepic, cfsan, debug, ptrsan, stackseal
 from sdks.SDKManager import SDKManager
 from ui.action import UserActionWithLevel
 
-plugins = {"abi": abisan.ABISanitizationPlugin, "ptr": ptrsan.PointerSanitizationPlugin, "cf": cfsan.ControlFlowSanitizationPlugin, "dbg": debug.DebugPlugin, "aepic": aepic.AepicPlugin}
+plugins = {"abi": abisan.ABISanitizationPlugin, "ptr": ptrsan.PointerSanitizationPlugin, "cf": cfsan.ControlFlowSanitizationPlugin, "dbg": debug.DebugPlugin, "aepic": aepic.AepicPlugin, "seal": stackseal.StackSealPlugin}
 
 
 logger = logging.getLogger(__name__)
