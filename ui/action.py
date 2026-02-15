@@ -6,6 +6,7 @@ import typer
 
 import pandora_options
 from ui.log_format import format_fields, format_header, format_inline_header, log_always
+from utilities.helper import auto_embed
 
 logger = logging.getLogger(__name__)
 
@@ -89,9 +90,7 @@ class UserActionWithLevel:
             log_always(logger, f"You have access to these explorer.enclave convenience functions:\n {format_fields([o[0] for o in getmembers(explorer.enclave) if isfunction(o[1])])}")
             log_always(logger, f"Use the local function {format_inline_header('abort_execution')} to exit Pandora.")
 
-            import IPython
-
-            IPython.embed()
+            auto_embed()
 
         elif self.user_action.value == "break":
             logger.critical(f"{info} Breaking. Press any key to continue..")

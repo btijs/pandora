@@ -227,15 +227,10 @@ def pandora_explore(pandora_ctx: PandoraContext):
     executed_num_steps = 0
     handled_error_states = 0
     pandora_state["in_execution"] = True
-    with Live(console_progress, console=console) as progress:
+    with Live(console_progress, console=console):
         # Only spawn a progress or spinner if we do not have any user action.
         # This would be annoying to have the spinner there for user actions.
-        using_task = False
-        if all(ua == UserAction.NONE for ua in action_mgr.actions.values()):
-            task = console_progress.add_task(description="Running symbolic execution at step ", total=None if pandora_ctx.num_steps == 0 else pandora_ctx.num_steps, fields={"active": 1, "eexited": 0})
-            using_task = True
-        else:
-            progress.stop()
+        task = console_progress.add_task(description="Running symbolic execution at step ", total=None if pandora_ctx.num_steps == 0 else pandora_ctx.num_steps, fields={"active": 1, "eexited": 0})
 
         # For 'with_cfg' option only: Keep track of unmapped addresses.
         unmapped_dict = {}
@@ -280,15 +275,14 @@ def pandora_explore(pandora_ctx: PandoraContext):
                 handled_error_states = len(errored_states)
 
             # Advance the progress bar / spinner
-            if using_task:
-                console_progress.update(task, fields=my_explorer.get_running_statistics())
-                console_progress.advance(task)
+            console_progress.update(task, fields=my_explorer.get_running_statistics())
+            console_progress.advance(task)
 
             # Advance to the next step
             current_step = next(it, None)
 
             # If we terminate without having a num steps limit, update the spinner to be completed.
-            if using_task and is_done and pandora_ctx.num_steps == 0:
+            if is_done and pandora_ctx.num_steps == 0:
                 console_progress.update(task, completed=executed_num_steps, total=executed_num_steps, fields=my_explorer.get_running_statistics())
 
     """

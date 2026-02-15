@@ -2,6 +2,7 @@ import logging
 
 from sdks.AbstractSGXSDK import AbstractSGXSDK
 from sdks.open_enclave_structs import OESgxEnclaveProperties
+from utilities.helper import auto_embed
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +19,8 @@ class OpenEnclaveSDK(AbstractSGXSDK):
 
         logger.debug(str(props))
         logger.critical("I don't know what to do with OE enclaves yet. Spawning a shell... figure it out yourself.")
-        import IPython
 
-        IPython.embed()
+        auto_embed()
 
         """
         Notes on how to set up heap,stack, and tcs pages

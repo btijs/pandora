@@ -1,6 +1,10 @@
 import json
 import logging
 
+import IPython
+
+from ui.log_setup import console
+
 
 def file_stream_is_elf_file(stream):
     """
@@ -41,3 +45,15 @@ def hexify(obj):
         return {hexify(k): hexify(v) for k, v in obj.items()}
     else:
         return obj
+
+
+def auto_embed(*args, **kwargs):
+    """
+    This is a helper function to automatically embed an IPython shell, while making sure that any live displays are properly stopped and restarted to avoid issues with the display.
+    """
+
+    # Copy the live stack, because they will get cleared when we stop them, and we want to restart them after embedding.
+    lives = console._live_stack.copy()
+    [lv.stop() for lv in lives]
+    IPython.embed(*args, **kwargs)
+    [lv.start() for lv in lives]

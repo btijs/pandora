@@ -2,7 +2,6 @@ import logging
 
 import angr
 import claripy
-import IPython
 from angr import BP_AFTER, BP_BEFORE
 from angr.sim_procedure import SimProcedure
 from claripy import ast
@@ -75,7 +74,6 @@ class SimSG(SimProcedure):
             # Coming from secure world
             # Bit 0 of lr must be set to 1
             self.state.regs.lr = self.state.regs.lr | 1
-            IPython.embed()
         self.jump(self.state.addr + 4)
 
 
