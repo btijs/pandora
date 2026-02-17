@@ -9,7 +9,7 @@ from explorer.enclave import buffer_entirely_inside_enclave, buffer_touches_encl
 logger = logging.getLogger(__name__)
 
 
-class EnclaveBreakpoingGeneratorMixin(MemoryMixin):
+class EnclaveBreakpointGeneratorMixin(MemoryMixin):
     """
     This class is responsible for generating breakpoints for memory accesses to enclave memory.
     It will not yet handle the memory accesses itself, but only generate the breakpoints.
