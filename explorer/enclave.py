@@ -70,30 +70,32 @@ def _check_touches(bv_addr, length, enclave_min_addr, enclave_max_addr, solver):
     """
     max_addr_before_enclave = enclave_min_addr - length
 
-    # The simplest check is max_addr_before_enclave < addr < enclave_max_addr
-    touches_enclave = claripy.And(bv_addr.UGT(max_addr_before_enclave), bv_addr.ULE(enclave_max_addr))
-
     # We have to be careful about overflow here
     # Specifically, we can not use the max_addr_before_enclave anymore as that underflows
+    if solver.satisfiable(extra_constraints=[max_addr_before_enclave < 0]):
+        # Either, the addr wraps the address space (overflows): Then, check whether the end reaches around
+        does_wrap = bv_addr.UGE(bv_addr + length)
+        wrap_and_touches_enclave = claripy.And(bv_addr.UGT(max_addr_before_enclave), does_wrap)
 
-    # Either, the addr wraps the address space (overflows): Then, check whether the end reaches around
-    does_wrap = bv_addr.UGE(bv_addr + length)
-    wrap_and_touches_enclave = claripy.And(bv_addr.UGT(max_addr_before_enclave), does_wrap)
+        # If the addr does not wrap, then do the normal check with an overwritten max_addr_before_enclave
+        does_not_wrap = bv_addr.ULT(bv_addr + length)
+        bv_addr_end = bv_addr + length - 1  # Inclusive end
+        touches_enclave = claripy.Or(
+            # Either the buffer start is inside the enclave range
+            claripy.And(bv_addr.UGE(enclave_min_addr), bv_addr.ULE(enclave_max_addr)),
+            # Or the buffer end is inside the enclave range
+            claripy.And(bv_addr_end.UGE(enclave_min_addr), bv_addr_end.ULE(enclave_max_addr)),
+            # Or the start is before the enclave start AND the end is after the enclave end (encapsulates the enclave)
+            claripy.And(bv_addr.ULE(enclave_min_addr), bv_addr_end.UGE(enclave_max_addr)),
+        )
+        no_wrap_and_touches = claripy.And(does_not_wrap, touches_enclave)
 
-    # If the addr does not wrap, then do the normal check with an overwritten max_addr_before_enclave
-    does_not_wrap = bv_addr.ULT(bv_addr + length)
-    bv_addr_end = bv_addr + length - 1  # Inclusive end
-    touches_enclave = claripy.Or(
-        # Either the buffer start is inside the enclave range
-        claripy.And(bv_addr.UGE(enclave_min_addr), bv_addr.ULE(enclave_max_addr)),
-        # Or the buffer end is inside the enclave range
-        claripy.And(bv_addr_end.UGE(enclave_min_addr), bv_addr_end.ULE(enclave_max_addr)),
-        # Or the start is before the enclave start AND the end is after the enclave end (encapsulates the enclave)
-        claripy.And(bv_addr.ULE(enclave_min_addr), bv_addr_end.UGE(enclave_max_addr)),
-    )
-    no_wrap_and_touches = claripy.And(does_not_wrap, touches_enclave)
+        e = claripy.Or(wrap_and_touches_enclave, no_wrap_and_touches)
+    else:
+        # The simplest check is max_addr_before_enclave < addr < enclave_max_addr
+        touches_enclave = claripy.And(bv_addr.UGT(max_addr_before_enclave), bv_addr.ULE(enclave_max_addr))
 
-    e = claripy.Or(wrap_and_touches_enclave, no_wrap_and_touches)
+        e = touches_enclave
 
     return solver.satisfiable(extra_constraints=[e])
 
