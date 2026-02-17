@@ -72,7 +72,7 @@ def _check_touches(bv_addr, length, enclave_min_addr, enclave_max_addr, solver):
 
     # We have to be careful about overflow here
     # Specifically, we can not use the max_addr_before_enclave anymore as that underflows
-    if solver.satisfiable(extra_constraints=[max_addr_before_enclave < 0]):
+    if solver.satisfiable(extra_constraints=[enclave_min_addr < length]):
         # Either, the addr wraps the address space (overflows): Then, check whether the end reaches around
         does_wrap = bv_addr.UGE(bv_addr + length)
         wrap_and_touches_enclave = claripy.And(bv_addr.UGT(max_addr_before_enclave), does_wrap)

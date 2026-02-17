@@ -13,6 +13,7 @@ from explorer.enclave import (
     buffer_entirely_inside_enclave,
     buffer_touches_enclave,
 )
+from utilities.helper import hexify
 
 logger = logging.getLogger(__name__)
 
@@ -35,13 +36,7 @@ def _check_one(state, func, case_str, expect, test_addr, test_length, test_encla
         str_addr = str(test_addr)
 
     if result != expect:
-        logger.error(
-            f"[{str(func.__name__)}] [{case_str}] for "
-            f"addr {str_addr if str_addr else str(test_addr)}, "
-            f"length {test_length}({test_length:#x}), "
-            f"enclave range [{test_enclave_range[0]:#x},{test_enclave_range[1]:#x}]."
-            f" Expected {expect} but got {result}. State constraints are: {ui.log_format.format_fields(state.solver.constraints)}"
-        )
+        logger.error(f"[{str(func.__name__)}] [{case_str}] for addr {hexify(str_addr)}, length {test_length}({hexify(test_length)}), enclave range [{test_enclave_range[0]:#x},{test_enclave_range[1]:#x}]. Expected {expect} but got {result}. State constraints are: {ui.log_format.format_fields(state.solver.constraints)}")
         num_issues += 1
     else:
         logger.log(logging.TRACE, f"{func.__name__} {case_str} -- addr:{test_addr}, length:{test_length}, range {test_enclave_range}, expected {expect}, got {result}")
@@ -69,7 +64,7 @@ def _check(state, func, inner_func, case_str, expect, test_addr, test_length, te
         assert rv0 == rv1 == rv2
 
 
-def test_buffer_touches_enclave(state):
+def test_buffer_touches_enclave(s):
     """
     Performs tests of the buffer_touches_enclave method.
     The test ONLY uses a _check and _check_both helper function to perform the test but _on purpose_
@@ -84,7 +79,7 @@ def test_buffer_touches_enclave(state):
     logger.info("Beginning test buffer_touches_enclave.")
     sym = claripy.BVS("symbolic", 64)
 
-    def _check_touches_enclave(case_str, expect, test_addr, test_length, test_enclave_range):
+    def _check_touches_enclave(case_str, expect, test_addr, test_length, test_enclave_range, state):
         _check(state, buffer_touches_enclave, _check_touches, case_str, expect, test_addr, test_length, test_enclave_range)
         # Now check symbolic value with original state.
         # This should always succeed (should always touch)
@@ -122,31 +117,86 @@ def test_buffer_touches_enclave(state):
     enclave_range = (0x1000, 0x3000 - 1)
     logger.info(f"Testing for enclave range [{enclave_range[0]:#x}, {enclave_range[1]:#x}]")
 
-    # 1. Symbolic
-    _check_touches_enclave("Case 01", True, claripy.BVS("symbolic", 64), 10, enclave_range)
+    ###### CONCRETE LENGTHS #######
+    # 1. Symbolic address
+    _check_touches_enclave("Case 01", True, claripy.BVS("symbolic", 64), 10, enclave_range, s)
 
     # 2-5. Outside/Inside
-    _check_touches_enclave("Case 02", False, 0, 10, enclave_range)
-    _check_touches_enclave("Case 03", True, enclave_range[0], 10, enclave_range)
-    _check_touches_enclave("Case 03.1", True, enclave_range[0], enclave_range[1] - enclave_range[0], enclave_range)
-    _check_touches_enclave("Case 03.2", True, enclave_range[0] + 30, 1, enclave_range)
-    _check_touches_enclave("Case 04", True, 0, 0x5000, enclave_range)
-    _check_touches_enclave("Case 05", False, 0x5000, 10, enclave_range)
+    _check_touches_enclave("Case 02", False, 0, 10, enclave_range, s)
+    _check_touches_enclave("Case 03", True, enclave_range[0], 10, enclave_range, s)
+    _check_touches_enclave("Case 03.1", True, enclave_range[0], enclave_range[1] - enclave_range[0], enclave_range, s)
+    _check_touches_enclave("Case 03.2", True, enclave_range[0] + 30, 1, enclave_range, s)
+    _check_touches_enclave("Case 04", True, 0, 0x5000, enclave_range, s)
+    _check_touches_enclave("Case 05", False, 0x5000, 10, enclave_range, s)
 
     # 6.-7. Partial overlap
-    _check_touches_enclave("Case 06", True, enclave_range[0] - 0x1000, 0x2000, enclave_range)
-    _check_touches_enclave("Case 07", True, enclave_range[1] - 0x1000, 0x2000, enclave_range)
+    _check_touches_enclave("Case 06", True, enclave_range[0] - 0x1000, 0x2000, enclave_range, s)
+    _check_touches_enclave("Case 07", True, enclave_range[1] - 0x1000, 0x2000, enclave_range, s)
 
     # 8.-11. One byte overlap/non-overlap
-    _check_touches_enclave("Case 08", True, enclave_range[0] - 19, 20, enclave_range)
-    _check_touches_enclave("Case 09", False, enclave_range[0] - 20, 20, enclave_range)
-    _check_touches_enclave("Case 10", True, enclave_range[1], 20, enclave_range)
-    _check_touches_enclave("Case 11", False, enclave_range[1] + 1, 20, enclave_range)
+    _check_touches_enclave("Case 08", True, enclave_range[0] - 19, 20, enclave_range, s)
+    _check_touches_enclave("Case 09", False, enclave_range[0] - 20, 20, enclave_range, s)
+    _check_touches_enclave("Case 10", True, enclave_range[1], 20, enclave_range, s)
+    _check_touches_enclave("Case 11", False, enclave_range[1] + 1, 20, enclave_range, s)
 
     # 12.-14. Overflows
-    _check_touches_enclave("Case 12", False, UINT64_MAX - 0x500, 0x1000, enclave_range)
-    _check_touches_enclave("Case 13", True, UINT64_MAX - 0x1000, 0x3000, enclave_range)
-    _check_touches_enclave("Case 14", True, UINT64_MAX - 0x1000, 0xF000, enclave_range)
+    _check_touches_enclave("Case 12", False, UINT64_MAX - 0x500, 0x1000, enclave_range, s)
+    _check_touches_enclave("Case 13", True, UINT64_MAX - 0x1000, 0x3000, enclave_range, s)
+    _check_touches_enclave("Case 14", True, UINT64_MAX - 0x1000, 0xF000, enclave_range, s)
+
+    ###### SYMBOLIC LENGTHS ######
+    addr = claripy.BVS("sym_addr", 64)
+    len = claripy.BVS("sym_len", 64)
+
+    new_state = s.copy()
+    new_state.solver.add(
+        claripy.Or(
+            claripy.And(addr == enclave_range[0] - 0x1000, len == 0x1000),
+            claripy.And(addr == enclave_range[0] - 0x500, len == 0x500),
+            claripy.And(addr == enclave_range[0] - 0x300, len == 0x300),
+        )
+    )
+    _check_touches_enclave("Case 15", False, addr, len, enclave_range, new_state)
+
+    new_state = s.copy()
+    new_state.solver.add(
+        claripy.Or(
+            claripy.And(addr == enclave_range[0] - 0x1000, len == 0x1010),
+            claripy.And(addr == enclave_range[0] - 0x500, len == 0x510),
+            claripy.And(addr == enclave_range[0] - 0x300, len == 0x310),
+        )
+    )
+    _check_touches_enclave("Case 16", True, addr, len, enclave_range, new_state)
+
+    new_state = s.copy()
+    new_state.solver.add(
+        claripy.Or(
+            claripy.And(addr == 0x3000, len == 0x1000),
+            claripy.And(addr == 0x5000, len == 0x1000),
+            claripy.And(addr == 0x7000, len == 0x1000),
+        )
+    )
+    _check_touches_enclave("Case 17", False, addr, len, enclave_range, new_state)
+
+    new_state = s.copy()
+    new_state.solver.add(
+        claripy.Or(
+            claripy.And(addr == UINT64_MAX - 0x1000, len == 0x1000),
+            claripy.And(addr == enclave_range[0] - 0x500, len == 0x500),
+            claripy.And(addr == enclave_range[0] - 0x300, len == 0x300),
+        )
+    )
+    _check_touches_enclave("Case 18", False, addr, len, enclave_range, new_state)
+
+    new_state = s.copy()
+    new_state.solver.add(
+        claripy.Or(
+            claripy.And(addr == UINT64_MAX - 0x1000, len == 0x2010),
+            claripy.And(addr == enclave_range[0] - 0x500, len == 0x500),
+            claripy.And(addr == enclave_range[0] - 0x300, len == 0x300),
+        )
+    )
+    _check_touches_enclave("Case 19", True, addr, len, enclave_range, new_state)
 
     """
     Second batch of tests will test enclaves loaded at the start of the address range.
@@ -157,30 +207,30 @@ def test_buffer_touches_enclave(state):
     enclave_range = (0, 0x3000 - 1)
     logger.info(f"Testing for enclave range [{enclave_range[0]:#x}, {enclave_range[1]:#x}]")
 
-    # 1. Symbolic
-    _check_touches_enclave("Case 01", True, claripy.BVS("symbolic", 64), 10, enclave_range)
+    # 1. Symbolic address
+    _check_touches_enclave("Case 01", True, claripy.BVS("symbolic", 64), 10, enclave_range, s)
 
     # 2-5. Outside/Inside
-    _check_touches_enclave("Case 02", True, 0, 10, enclave_range)  # NOW TRUE
-    _check_touches_enclave("Case 03", True, 0x1000, 10, enclave_range)
-    _check_touches_enclave("Case 03.1", True, enclave_range[0], enclave_range[1] - enclave_range[0], enclave_range)
-    _check_touches_enclave("Case 04", True, 0, 0x5000, enclave_range)
-    _check_touches_enclave("Case 05", False, 0x5000, 10, enclave_range)
+    _check_touches_enclave("Case 02", True, 0, 10, enclave_range, s)  # NOW TRUE
+    _check_touches_enclave("Case 03", True, 0x1000, 10, enclave_range, s)
+    _check_touches_enclave("Case 03.1", True, enclave_range[0], enclave_range[1] - enclave_range[0], enclave_range, s)
+    _check_touches_enclave("Case 04", True, 0, 0x5000, enclave_range, s)
+    _check_touches_enclave("Case 05", False, 0x5000, 10, enclave_range, s)
 
     # 6.-7. Partial overlap
-    _check_touches_enclave("Case 06", True, enclave_range[0] - 0x1000, 0x2000, enclave_range)
-    _check_touches_enclave("Case 07", True, enclave_range[1] - 0x1000, 0x2000, enclave_range)
+    _check_touches_enclave("Case 06", True, enclave_range[0] - 0x1000, 0x2000, enclave_range, s)
+    _check_touches_enclave("Case 07", True, enclave_range[1] - 0x1000, 0x2000, enclave_range, s)
 
     # 8.-11. One byte overlap/non-overlap
-    _check_touches_enclave("Case 08", True, enclave_range[0] - 19, 20, enclave_range)
-    _check_touches_enclave("Case 09", False, enclave_range[0] - 20, 20, enclave_range)
-    _check_touches_enclave("Case 10", True, enclave_range[1], 20, enclave_range)
-    _check_touches_enclave("Case 11", False, enclave_range[1] + 1, 20, enclave_range)
+    _check_touches_enclave("Case 08", True, enclave_range[0] - 19, 20, enclave_range, s)
+    _check_touches_enclave("Case 09", False, enclave_range[0] - 20, 20, enclave_range, s)
+    _check_touches_enclave("Case 10", True, enclave_range[1], 20, enclave_range, s)
+    _check_touches_enclave("Case 11", False, enclave_range[1] + 1, 20, enclave_range, s)
 
     # 12.-14. Overflows
-    _check_touches_enclave("Case 12", True, UINT64_MAX - 0x500, 0x1000, enclave_range)  # NOW TRUE
-    _check_touches_enclave("Case 13", True, UINT64_MAX - 0x1000, 0x3000, enclave_range)
-    _check_touches_enclave("Case 14", True, UINT64_MAX - 0x1000, 0xF000, enclave_range)
+    _check_touches_enclave("Case 12", True, UINT64_MAX - 0x500, 0x1000, enclave_range, s)  # NOW TRUE
+    _check_touches_enclave("Case 13", True, UINT64_MAX - 0x1000, 0x3000, enclave_range, s)
+    _check_touches_enclave("Case 14", True, UINT64_MAX - 0x1000, 0xF000, enclave_range, s)
 
     """
     Third batch of tests will test for enclaves loaded at the end of the address range.
@@ -193,25 +243,25 @@ def test_buffer_touches_enclave(state):
     enclave_range = (UINT64_MAX - 0x3000, UINT64_MAX - 1)
     logger.info(f"Testing for enclave range [{enclave_range[0]:#x}, {enclave_range[1]:#x}]")
 
-    # 1. Symbolic
-    _check_touches_enclave("Case 01", True, claripy.BVS("symbolic", 64), 10, enclave_range)
+    # 1. Symbolic address
+    _check_touches_enclave("Case 01", True, claripy.BVS("symbolic", 64), 10, enclave_range, s)
 
     # 2-5. Outside/Inside
-    _check_touches_enclave("Case 02", False, 0, 10, enclave_range)
-    _check_touches_enclave("Case 03", True, UINT64_MAX - 0x2000, 10, enclave_range)
-    _check_touches_enclave("Case 03.1", True, enclave_range[0], enclave_range[1] - enclave_range[0], enclave_range)
-    _check_touches_enclave("Case 04", True, 0, UINT64_MAX - 1, enclave_range)
-    _check_touches_enclave("Case 05", True, UINT64_MAX - 11, 10, enclave_range)  # NOW TRUE
+    _check_touches_enclave("Case 02", False, 0, 10, enclave_range, s)
+    _check_touches_enclave("Case 03", True, UINT64_MAX - 0x2000, 10, enclave_range, s)
+    _check_touches_enclave("Case 03.1", True, enclave_range[0], enclave_range[1] - enclave_range[0], enclave_range, s)
+    _check_touches_enclave("Case 04", True, 0, UINT64_MAX - 1, enclave_range, s)
+    _check_touches_enclave("Case 05", True, UINT64_MAX - 11, 10, enclave_range, s)  # NOW TRUE
 
     # 6.-7. Partial overlap
-    _check_touches_enclave("Case 06", True, enclave_range[0] - 0x1000, 0x2000, enclave_range)
-    _check_touches_enclave("Case 07", True, enclave_range[1] - 0x1000, 0x2000, enclave_range)
+    _check_touches_enclave("Case 06", True, enclave_range[0] - 0x1000, 0x2000, enclave_range, s)
+    _check_touches_enclave("Case 07", True, enclave_range[1] - 0x1000, 0x2000, enclave_range, s)
 
     # 8.-11. One byte overlap/non-overlap
-    _check_touches_enclave("Case 08", True, enclave_range[0] - 19, 20, enclave_range)
-    _check_touches_enclave("Case 09", False, enclave_range[0] - 20, 20, enclave_range)
-    _check_touches_enclave("Case 10", True, enclave_range[1], 20, enclave_range)
-    _check_touches_enclave("Case 11", False, enclave_range[1] + 1, 20, enclave_range)
+    _check_touches_enclave("Case 08", True, enclave_range[0] - 19, 20, enclave_range, s)
+    _check_touches_enclave("Case 09", False, enclave_range[0] - 20, 20, enclave_range, s)
+    _check_touches_enclave("Case 10", True, enclave_range[1], 20, enclave_range, s)
+    _check_touches_enclave("Case 11", False, enclave_range[1] + 1, 20, enclave_range, s)
 
     logger.info(f"Done with test buffer_touches_enclave. Had {num_issues} issues.")
     return num_issues
