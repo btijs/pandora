@@ -25,7 +25,7 @@ This repository is the research artifact and can also be cited (check GitHub cit
 ## Quickstart
 
 ```bash
-pip3 install -r requirements.txt
+pip3 install .
 
 # Good CLI hopefully makes it easy for you to get started
 ./pandora.py --help
@@ -100,20 +100,20 @@ In rare cases, Pandora experiences segmentation faults or Z3 issues due to insta
 
 For us, these issues occur very rarely, and happen non-deterministically. Often, re-running the same binary right away avoids a crash. On some machines, these errors seem to happen more often than on others, and for those machines, we had success in updating the Z3 Python package: `pip install --upgrade z3-solver`.
 
-### Installation and updating
+## Installation and updating
 
 To install or update, run pip on the requirements script:
 
 ```bash
-pip3 install -r requirements.txt --upgrade --upgrade-strategy='eager'
+pip3 install . --upgrade --upgrade-strategy='eager'
 ```
 
 Alternatively, to install and run Pandora in a Python virtual environment:
 
 ```bash
 $ sudo python3 -m venv venv
-$ ./venv/bin/pip3 install -r requirements.txt
 $ source ./venv/bin/activate
+(venv) $ pip3 install .
 (venv) $ ./pandora.py
 ```
 ## Contributing
