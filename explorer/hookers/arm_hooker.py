@@ -1,9 +1,10 @@
 import logging
 
+from angr import SIM_PROCEDURES
 from capstone import CS_ARCH_ARM, CS_MODE_THUMB, CS_MODE_V8, Cs
 
 from explorer.hookers.abstract_hooker import AbstractHooker
-from explorer.hookers.arm_hooks import SimBKPT, SimBXNS, SimMemCpy, SimMemSet, SimSG, SimSkipFunction, SimSVC, SimTestTarget
+from explorer.hookers.arm_hooks import SimBKPT, SimBXNS, SimSG, SimSkipFunction, SimSVC, SimTestTarget
 
 logger = logging.getLogger(__name__)
 
@@ -65,9 +66,8 @@ class Armv8MHooker(AbstractHooker):
         self.init_state.globals["sg_instr_addrs"] = sg_instr_addrs
 
     def hook_symbols(self):
-        self.project.hook_symbol("memset", SimMemSet())
-        self.project.hook_symbol("memcpy", SimMemCpy())
-        # self.project.hook_symbol("arch_clean_stack_and_launch", SimLaunchNS())
+        self.project.hook_symbol("memset", SIM_PROCEDURES["libc"]["memset"]())
+        self.project.hook_symbol("memcpy", SIM_PROCEDURES["libc"]["memcpy"]())
         self.project.hook_symbol("tfm_hal_system_reset", SimBKPT())
 
         for fun in [
