@@ -6,10 +6,6 @@ import IPython
 
 from ui.log_setup import console
 
-import IPython
-
-from ui.log_setup import console
-
 
 def file_stream_is_elf_file(stream):
     """
