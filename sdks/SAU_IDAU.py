@@ -540,7 +540,12 @@ class FullAttributionUnit(SimStatePlugin):
             claripy.BoolV(True),  # it shouldn't matter what default is here, as all address space should be covered
         )
 
-        logger.info(f"TT lookup for address {address} returned:\n\tIDAU region nr={idau_region_nr},\n\tIDAU valid={idau_region_valid},\n\tSAU region nr={sau_region_nr},\n\tSAU valid={sau_region_valid},\n\tsecure={secure}")
+        logger.info(f"TT lookup for address {address}")
+        logger.debug("\tIDAU region nr={idau_region_nr}")
+        logger.debug("\tIDAU valid={idau_region_valid}")
+        logger.debug("\tSAU region nr={sau_region_nr}")
+        logger.debug("\tSAU valid={sau_region_valid}")
+        logger.debug("\tsecure={secure}")
 
         # MPU =====================================================================================
         # TODO: implement the MPU

@@ -1,10 +1,9 @@
 import logging
 
-from angr import SIM_PROCEDURES
 from capstone import CS_ARCH_ARM, CS_MODE_THUMB, CS_MODE_V8, Cs
 
 from explorer.hookers.abstract_hooker import AbstractHooker
-from explorer.hookers.arm_hooks import SimBKPT, SimBXNS, SimSG, SimSkipFunction, SimSVC, SimTestTarget
+from explorer.hookers.arm_hooks import SimBKPT, SimBXNS, SimCopyFlashRegion, SimMemCpy, SimMemSet, SimSG, SimSkipFunction, SimSVC, SimTestTarget
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +17,8 @@ class Armv8MHooker(AbstractHooker):
         md.detail = True
         md.skipdata = True
         for instr in md.disasm(section_bytes, addr):
+            hook_addr = instr.address
+
             if instr.mnemonic in ["tt", "ttt", "tta", "ttat"]:
                 # Different kind of TT instructions:
                 # get security state and access permissions for access with <security lvl> + <privilege lvl>
@@ -28,46 +29,42 @@ class Armv8MHooker(AbstractHooker):
                 rd = instr.reg_name(instr.operands[0].value.reg)
                 rn = instr.reg_name(instr.operands[1].value.reg)
                 logger.info(
-                    f"Found {instr.mnemonic.upper()} instruction, rd = {rd}, rn = {rn} at address 0x{instr.address:x}. Hooking now...",
+                    f"Found {instr.mnemonic.upper()} instruction, rd = {rd}, rn = {rn} at address 0x{hook_addr:x}. Hooking now...",
                 )
 
                 a_flag = instr.mnemonic in ["tta", "ttat"]
                 t_flag = instr.mnemonic in ["ttt", "ttat"]
 
                 hook = SimTestTarget(rd=rd, rn=rn, a_flag=a_flag, t_flag=t_flag)
-                self.project.hook(instr.address, hook, length=instr.size)
+                self.project.hook(hook_addr, hook, length=instr.size)
             elif instr.mnemonic == "sg":
-                logger.info(f"Found SG instruction at address 0x{instr.address:x}. Hooking now...")
-                sg_instr_addrs.append(instr.address)
+                logger.info(f"Found SG instruction at address 0x{hook_addr:x}. Hooking now...")
+                sg_instr_addrs.append(hook_addr)
 
                 hook = SimSG()
-                self.project.hook(instr.address, hook, length=instr.size)
+                self.project.hook(hook_addr, hook, length=instr.size)
             elif instr.mnemonic == "bkpt":
-                logger.info(f"Found BKPT instruction at address 0x{instr.address:x} {instr.size}. Hooking now...")
+                logger.info(f"Found BKPT instruction at address 0x{hook_addr:x} {instr.size}. Hooking now...")
                 hook = SimBKPT()
                 # hook = SimNop(bytes_to_skip=instr.size, mnemonic=instr.mnemonic, opstr=instr.op_str)
-                self.project.hook(instr.address, hook, length=instr.size)
+                self.project.hook(hook_addr, hook, length=instr.size)
             elif instr.mnemonic in ["blxns", "bxns"]:
-                logger.info(f"Found {instr.mnemonic.upper()} instruction at address 0x{instr.address:x}. Hooking now...")
+                logger.info(f"Found {instr.mnemonic.upper()} instruction at address 0x{hook_addr:x}. Hooking now...")
                 reg = instr.reg_name(instr.operands[0].value.reg)
                 hook = SimBXNS(jmp_reg=reg, l_flag=(instr.mnemonic.lower() == "blxns"))
-                self.project.hook(instr.address, hook, length=instr.size)
-            # elif instr.mnemonic in ["bx", "blx"]:
-            #     logger.info(f"Found {instr.mnemonic.upper()} instruction at address 0x{instr.address:x}. Hooking now...")
-            #     ret = instr.reg_name(instr.operands[0].value.reg)
-            #     hook = SimBX(ret=ret, l_flag=(instr.mnemonic.lower() == "blx"))
-            #     self.project.hook(instr.address, hook, length=instr.size)
+                self.project.hook(hook_addr, hook, length=instr.size)
 
             elif instr.mnemonic == "svc":
-                logger.info(f"Found SVC instruction at address 0x{instr.address:x}. Hooking now...")
+                logger.info(f"Found SVC instruction at address 0x{hook_addr:x}. Hooking now...")
                 hook = SimSVC(bytes_to_skip=instr.size, opstr=instr.op_str, svc_num=instr.operands[0].value.imm)
-                self.project.hook(instr.address, hook, length=instr.size)
+                self.project.hook(hook_addr, hook, length=instr.size)
 
         self.init_state.globals["sg_instr_addrs"] = sg_instr_addrs
 
     def hook_symbols(self):
-        self.project.hook_symbol("memset", SIM_PROCEDURES["libc"]["memset"]())
-        self.project.hook_symbol("memcpy", SIM_PROCEDURES["libc"]["memcpy"]())
+        self.project.hook_symbol("memset", SimMemSet())
+        self.project.hook_symbol("memcpy", SimMemCpy())
+        self.project.hook_symbol("copy_flash_region", SimCopyFlashRegion())
         self.project.hook_symbol("tfm_hal_system_reset", SimBKPT())
 
         for fun in [

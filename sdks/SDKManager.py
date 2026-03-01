@@ -197,6 +197,13 @@ class SDKManager(metaclass=Singleton):
         """
         self.sdk.modify_init_state(init_state)
 
+    def modify_reentry_state(self, reentry_state):
+        """
+        Called after explorer prepared the reentry state but before exploration continues after reentry.
+        Useful for SDKs that need to modify the reentry state or add constraints to it to speed up exploration or to make it work at all.
+        """
+        self.sdk.modify_reentry_state(reentry_state)
+
     def __get_sdk_class(self):
         """
         Returns either the initialized SDK or the possible sdk base class if one was detected.
