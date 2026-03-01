@@ -34,7 +34,7 @@ class ActionManager(metaclass=Singleton):
             logger.debug("Loading requested actions:")
             for event, level, action in act_events:
                 # Convert string log level to int
-                level = logging.getLevelNamesMapping()[level.upper()]
+                level = logging.getLevelNamesMapping()[level.upper()] if level else logging.INFO
                 self.leveled_actions[event] = UserActionWithLevel(level, UserAction(action))
                 logger.debug(f"\tRegistered user action {action} for {event}")
         else:
