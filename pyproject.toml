@@ -5,15 +5,15 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "angr>=9.2.199",
+    "angr>=9.2.200",
+    "angr-utils>=0.5.0",
     "ansi2html>=1.9.2",
-    "claripy>=9.2.183",
-    "cle>=9.2.183",
+    "archinfo",
     "dominate>=2.9.1",
     "ipython>=9.7.0",
     "json5>=0.12.1",
     "pre-commit>=4.5.1",
-    "pyvex>=9.2.183",
+    "pyvex",
     "typer>=0.20.0",
     "unicorn>=2.1.4",
 ]

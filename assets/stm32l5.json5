@@ -1,0 +1,113 @@
+{
+    "regions": [
+        // Code-external memories when remapped 0x0000 0000-0x07FF FFFF (128 Mbytes) Nonsecure
+        // Code-flash memory and SRAM 0x0800 0000-0x0BFF FFFF (64 Mbytes) Nonsecure
+        // 0x0C00 0000-0x0FFF FFFF (256 Mbytes) Nonsecure callable
+        // Code-external memories when remapped 0x1000 0000-0x1FFF FFFF (256 Mbytes) Nonsecure
+        // SRAM 0x2000 0000-0x2FFF FFFF (256 Mbytes) Nonsecure
+        // 0x3000 0000-0x3FFF FFFF (256 Mbytes) Nonsecure callable
+        // Peripherals 0x4000 0000-0x4FFF FFFF (256 Mbytes) Nonsecure
+        // 0x5000 0000-0x5FFF FFFF (256 Mbytes) Nonsecure callable
+        // External memory(1) 0x6000 0000-0xDFFF FFFF (2 Gbytes) Nonsecure
+        {
+            "number": 0,
+            "start_address": 0x00000000,
+            "end_address": 0x07FFFFFF,
+            "security_attribute": "nonsecure",
+        },
+        {
+            "number": 2,
+            "start_address": 0x08000000,
+            "end_address": 0x0BFFFFFF,
+            "security_attribute": "nonsecure",
+        },
+        {
+            "number": 3,
+            "start_address": 0x0C000000,
+            "end_address": 0x0FFFFFFF,
+            "security_attribute": "nonsecure_callable",
+        },
+        {
+            "number": 4,
+            "start_address": 0x10000000,
+            "end_address": 0x17FFFFFF,
+            "security_attribute": "nonsecure",
+        },
+        {
+            "number": 6,
+            "start_address": 0x18000000,
+            "end_address": 0x1FFFFFFF,
+            "security_attribute": "nonsecure",
+        },
+        {
+            "number": 8,
+            "start_address": 0x20000000,
+            "end_address": 0x2FFFFFFF,
+            "security_attribute": "nonsecure",
+        },
+        {
+            "number": 12,
+            "start_address": 0x30000000,
+            "end_address": 0x3FFFFFFF,
+            "security_attribute": "nonsecure_callable",
+        },
+        {
+            "number": 24,
+            "start_address": 0x40000000,
+            "end_address": 0x4FFFFFFF,
+            "security_attribute": "nonsecure",
+        },
+        {
+            "number": 28,
+            "start_address": 0x50000000,
+            "end_address": 0x5FFFFFFF,
+            "security_attribute": "nonsecure_callable",
+        },
+        {
+            "number": 31,
+            "start_address": 0x60000000,
+            "end_address": 0xDFFFFFFF,
+            "security_attribute": "nonsecure",
+        },
+        {
+            // ITM, DWT, FPB/BPU
+            "number": 0,
+            "start_address": 0xE0000000,
+            "end_address": 0xE0002FFF,
+            "security_attribute": "secure",
+            "exempted": true,
+        },
+        {
+            // System Control Space
+            "number": 0,
+            "start_address": 0xE000E000,
+            "end_address": 0xE000EFFF,
+            "security_attribute": "secure",
+            "exempted": true,
+        },
+        {
+            // NS Alias of System Control Space
+            "number": 0,
+            "start_address": 0xE002E000,
+            "end_address": 0xE002EFFF,
+            "security_attribute": "secure",
+            "exempted": true,
+        },
+        {
+            // Implementation defined NS address space
+            "number": 0,
+            "start_address": 0xE0040000,
+            "end_address": 0xE0044FFF,
+            "security_attribute": "secure",
+            "exempted": true,
+        },
+        {
+            // ROM Table
+            "number": 0,
+            "start_address": 0xE00FE000,
+            "end_address": 0xE00FFFFF,
+            "security_attribute": "secure",
+            "exempted": true,
+        },
+    ]
+}
