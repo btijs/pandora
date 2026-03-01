@@ -1,5 +1,6 @@
 import logging
 import sys
+from pathlib import Path
 
 import angr
 
@@ -7,6 +8,7 @@ import pandora_options as po
 import ui.log_format as log_format
 import ui.log_setup
 from explorer.engine.PandoraEngine import PandoraEngine
+from explorer.techniques.HALMemoryCheckMerger import HALMemoryCheckMerger
 from ui.action import UserActionWithLevel
 from ui.action_manager import ActionManager
 from ui.log_format import get_state_backtrace_compact, get_state_backtrace_formatted
@@ -19,6 +21,7 @@ from .techniques.EnclaveReentry import EnclaveReentry
 from .techniques.ExplorationStatistics import ExplorationStatistics
 from .techniques.PandoraDFS import PandoraDFS
 from .techniques.PandoraLoopSeer import PandoraLoopSeer
+from .techniques.RealSoftwareStatePruning import RealSoftwareStatePruning
 from .techniques.TraceLogger import TraceLogger
 
 logger = logging.getLogger(__name__)
@@ -72,6 +75,11 @@ class AbstractExplorer(metaclass=Singleton):
             # Set angr options
             # Unconstrained registers should be symbolized. Setting ignored by EnclaveMemoryFillerMixin
             # self.initial_state.options['SYMBOL_FILL_UNCONSTRAINED_REGISTERS'] = True
+
+            # Writes to symbolic memory addresses are concretized by default to a single solution.
+            # We want to explore multiple solutions in Pandora, so we set a strategy that allows multiple
+            self.initial_state.memory.write_strategies.insert(0, angr.concretization_strategies.SimConcretizationStrategySolutions(limit=20))
+            self.initial_state.memory.read_strategies.insert(0, angr.concretization_strategies.SimConcretizationStrategySolutions(limit=20))
 
             """
             Unconstrained memory does not really exist in Pandora:
@@ -180,6 +188,10 @@ class BasicBlockExplorer(AbstractExplorer):
 
             if pandora_options[po.PANDORA_EXPLORE_USE_LOOP_SEER]:
                 self.simgr.use_technique(PandoraLoopSeer(bound=pandora_options[po.PANDORA_EXPLORE_LOOP_SEER_BOUND]))
+
+            self.simgr.use_technique(HALMemoryCheckMerger(project=self.proj, wait_counter=10))
+            if True:
+                self.simgr.use_technique(RealSoftwareStatePruning(Path(self.proj.filename).parent / "trace.txt"))
 
             # To log basic blocks when logging is set to TRACE, we use the TraceLogger
             self.simgr.use_technique(TraceLogger())
