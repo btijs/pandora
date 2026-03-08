@@ -57,10 +57,10 @@ class BaseFormatter:
     def verbatim(self, name, text):
         pass
 
-    def table(self, info_dict):
+    def table(self, headers, values):
         pass
 
-    def headless_table(self, info_dict):
+    def headless_table(self, values):
         pass
 
 
@@ -122,11 +122,11 @@ class LogFormatter(BaseFormatter):
         self.logger.log(self.sect_sev, format_inline_header(name))
         self.logger.log(self.sect_sev, text)
 
-    def table(self, info_dict):
-        self.logger.log(self.sect_sev, format_table(info_dict))
+    def table(self, headers, values):
+        self.logger.log(self.sect_sev, format_table(values, headers))
 
-    def headless_table(self, info_dict):
-        self.logger.log(self.sect_sev, format_table(info_dict))
+    def headless_table(self, values):
+        self.logger.log(self.sect_sev, format_table(values))
 
 
 class HTMLFormatter(BaseFormatter):
@@ -202,7 +202,7 @@ class HTMLFormatter(BaseFormatter):
 
         with self.content:
             tags.h2("Report summary")
-            self.create_table(table_dict, key="Severity", val="Reported issues")
+            self.create_table(table_dict.items(), ("Severity", "Reported issues"))
 
     def create_box(self, content, desc="", icon=None, alert_type="primary", close=False):
         with self.content:
@@ -311,23 +311,23 @@ class HTMLFormatter(BaseFormatter):
     def verbatim(self, name, text):
         self.subsubsection(name, self.ansi2html(text))
 
-    def create_table(self, info_dict, key="Key", val="Value"):
+    def create_table(self, values, headers=None):
         # https://getbootstrap.com/docs/5.2/content/tables/
         t = tags.table(cls="table table-bordered table-striped")
-        if key is not None and val is not None:
-            t += tags.thead(tags.tr(tags.th(key), tags.th(val)))
+        if headers is not None:
+            t += tags.thead(tags.tr(*[tags.th(header) for header in headers]))
         with t.add(tags.tbody()):
-            for k, v in info_dict.items():
-                r = tags.tr(cls=f"collapse show {k.lower()}")
-                r += tags.td(k)
-                r += tags.td(v)
+            for row in values:
+                r = tags.tr()
+                for val in row:
+                    r += tags.td(val)
         return t
 
-    def table(self, info_dict):
-        self.subsec += self.create_table(info_dict)
+    def table(self, headers, values):
+        self.subsec += self.create_table(values, headers)
 
-    def headless_table(self, info_dict):
-        self.subsec += self.create_table(info_dict, key=None, val=None)
+    def headless_table(self, values):
+        self.subsec += self.create_table(values, None)
 
 
 ########################################

@@ -91,12 +91,12 @@ def eexit_hook(state: angr.sim_state.SimState):
         extra_sec = {
             "Intel SDK-specific info": [
                 (
-                    "",
-                    {
-                        "g_enclave_state": enclave_state,
-                        "EEXIT reason": reason,
-                        "EENTER return value": rv,
-                    },
+                    ("", ""),
+                    [
+                        ("g_enclave_state", enclave_state),
+                        ("EEXIT reason", reason),
+                        ("EENTER return value", rv),
+                    ],
                     "table",
                 ),
                 ("Enclave global data", str(global_data), "verbatim"),

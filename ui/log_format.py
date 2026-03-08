@@ -158,13 +158,16 @@ def format_log_level(msg, log_level):
         raise Exception(f"unknown log level '{log_level}'")
 
 
-def format_table(kv_dict, key_hdr="key", val_hdr="value"):
+def format_table(kv_values, headers=None):
     table = Table(title="", safe_box=True)
-    table.add_column(key_hdr)
-    table.add_column(val_hdr)
+    if headers is None:
+        num_cols = len(kv_values[0]) if len(kv_values) > 0 else 0
+        headers = tuple(f"Column {i + 1}" for i in range(num_cols))
+    for header in headers:
+        table.add_column(header)
 
-    for k, v in kv_dict.items():
-        table.add_row(str(k), str(v))
+    for entry in kv_values:
+        table.add_row(*[str(v) for v in entry])
 
     return format_rich(table, rich_content=True)
 

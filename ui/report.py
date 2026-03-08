@@ -157,14 +157,14 @@ class Reporter(metaclass=Singleton):
                 num = len(ips)
                 lvl = f"{format_log_level(num, sev)} unique {format_log_level(sev, sev)} issue{'s' if num > 1 else ''}"
                 lvl_summaries.append(lvl)
-                pretty_ips[sev] = "; ".join([f"'{info}' at {ip:#x}" for (ip, info) in ips])
+                pretty_ips[sev] = ";\n".join([f"'{info}' at {ip:#x}" for (ip, info) in ips])
 
             issues = f"{'; '.join(lvl_summaries)}." if lvl_summaries else "no issues."
 
             log_always(logger, format_header(f"\n{name} summary:") + f" {name} reported {issues}")
 
             if lvl_summaries:
-                log_always(logger, format_table(pretty_ips, key_hdr="Severity", val_hdr=f"Reports by {name}"))
+                log_always(logger, format_table(pretty_ips.items(), ("Severity", f"Reports by {name}")))
 
         # Now, write the report data to file
         with open(self.filename, "w") as file:
@@ -210,7 +210,9 @@ class Reporter(metaclass=Singleton):
         :param extra_info: A dict with extra info to be displayed as table on top
         :param only_once: Set to false to not repeat issues.
         :param extra_sections: A dict to print extra info in segments. Should have the format
-        {groupname (string) : list(tuple(3, string)). Example: [(segment name, object to be placed in the section, environment type (verbatim|trace|table)]
+            {groupname (string) : list(tuple(3, string)).
+            Example: {groupname: [((col1_header, col2_header, ...), [(col1_value, col2_value, ...), ...], table]}
+            Example: {groupname: [(name, object to be logged, environment type (verbatim|trace)]}
         }.
         """
         if extra_info is None:

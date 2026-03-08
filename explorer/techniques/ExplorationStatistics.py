@@ -51,12 +51,27 @@ class ExplorationStatistics(ExplorationTechnique):
             extra_sections={
                 "Runtime statistics": [
                     (
-                        "Hit symbols ordered by time of occurrence",
-                        self.symbol_stats,  # Dicts preserve insertion order in Python 3.7+
+                        ("Function symbol", "Hit count"),
+                        [(k, v) for k, v in self.symbol_stats.items()],  # Dicts preserve insertion order in Python 3.7+
                         "table",
                     )
                 ]
             },
         )
 
-        Reporter().report("Runtime statistics of hit symbols by count", self.init_state, logger, SYSTEM_EVENTS_REPORT_NAME, logging.INFO, extra_sections={"Runtime statistics": [("Hit symbols ordered by count", dict(sorted(self.symbol_stats.items(), key=lambda item: item[1])), "table")]})
+        Reporter().report(
+            "Runtime statistics of hit symbols by count",
+            self.init_state,
+            logger,
+            SYSTEM_EVENTS_REPORT_NAME,
+            logging.INFO,
+            extra_sections={
+                "Runtime statistics": [
+                    (
+                        ("Function symbol", "Hit count"),
+                        sorted(self.symbol_stats.items(), key=lambda item: item[1]),
+                        "table",
+                    )
+                ]
+            },
+        )
