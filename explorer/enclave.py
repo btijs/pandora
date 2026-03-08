@@ -97,7 +97,7 @@ def _check_touches(bv_addr, length, enclave_min_addr, enclave_max_addr, solver):
 
         e = touches_enclave
 
-    return solver.satisfiable(extra_constraints=[e])
+    return solver.satisfiable(extra_constraints=[e, length > 0])
 
 
 def buffer_touches_enclave(state, addr, length, use_enclave_range: None | [tuple] = None):
@@ -156,7 +156,7 @@ def _check_entirely_inside(bv_addr, length, enclave_min_addr, enclave_max_addr, 
     can_wrap = bv_addr.UGT(bv_addr + length - 1)
 
     e = claripy.Or(can_lie_outside, can_wrap)
-    return not solver.satisfiable(extra_constraints=[e])
+    return not solver.satisfiable(extra_constraints=[e, length > 0])
 
 
 def buffer_entirely_inside_enclave(state, address, buffer_length, use_enclave_range: None | [tuple] = None):
