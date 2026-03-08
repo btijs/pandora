@@ -2,7 +2,7 @@ import logging
 
 from angr.storage.memory_mixins.memory_mixin import MemoryMixin
 
-from explorer.taint import get_tainted_mem_bits
+from explorer.taint import MemoryAddressAnnotation, get_tainted_mem_bits
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,8 @@ class EnclaveAwareMixin(MemoryMixin):
                 However, we first triggered the respective breakpoint, create the load, and then trigger the post
                 breakpoint before returning.
             """
-            mem = get_tainted_mem_bits(self.state, size * 8)
+            address_annotation = MemoryAddressAnnotation(addr, size)
+            mem = get_tainted_mem_bits(self.state, size * 8, annotations=[address_annotation])
             logger.debug(f"Simulating untrusted {self.category} load @ {addr} with a tainted BVS {mem}.")
 
             # Early return the untrusted read

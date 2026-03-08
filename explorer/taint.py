@@ -92,6 +92,24 @@ class AttackerTaintLiberal(claripy.Annotation):
         assert False  # Should never happen
 
 
+class MemoryAddressAnnotation(claripy.Annotation):
+    """
+    This annotation is used to mark the memory address of symbolic memory.
+    """
+
+    def __init__(self, addr, size):
+        self.addr = addr
+        self.size = size
+
+    @property
+    def eliminatable(self):
+        return False
+
+    @property
+    def relocatable(self):
+        return False
+
+
 def get_tainted_reg(state, reg_name, size):
     """
     reg_name: name of the register

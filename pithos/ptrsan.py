@@ -198,14 +198,72 @@ def _report_error(
 
     can_wrap = state.solver.satisfiable(extra_constraints=[addr.UGT(addr + length - 1)])
 
-    extra = {"Address": addr, "Attacker tainted": tainted, "Length": length, "Pointer range": addr_range, "Pointer can wrap address space": can_wrap, "Pointer can lie in enclave": ptr_in_enclave}
+    ### Generate concrete example for reproducability
+    # For all symbolic variables present in the state constraints, generate a concrete value that satisfies the constraints.
+    bvs = {leaf for cons in (state.solver.constraints + [addr]) for leaf in state.solver.simplify(cons).leaf_asts() if leaf.symbolic and leaf.get_annotations_by_type(taint.AttackerTaintConservative)}
+    memory_bvs = {leaf for leaf in bvs if leaf.get_annotations_by_type(taint.MemoryAddressAnnotation)}
+    register_bvs = bvs - memory_bvs
+
+    def create_register_info(bv):
+        return (
+            str(bv),  # Name of the symbolic variable
+            state.solver.eval(bv),  # Concrete value of the register
+        )
+
+    concrete_register_vals = [create_register_info(bv) for bv in register_bvs]
+
+    def create_memory_info(bv):
+        return (
+            str(bv),  # Name of the symbolic variable
+            state.solver.eval(bv),  # Concrete memory content
+            state.solver.eval(bv.get_annotations_by_type(taint.MemoryAddressAnnotation)[0].addr),  # Concrete memory address
+            bv.get_annotations_by_type(taint.MemoryAddressAnnotation)[0].addr,  # Symbolic memory address
+            state.solver.eval(bv.get_annotations_by_type(taint.MemoryAddressAnnotation)[0].size),  # Size of memory access
+        )
+
+    concrete_memory_vals = [create_memory_info(bv) for bv in memory_bvs]
+
+    extra = {
+        "Address": addr,
+        "Attacker tainted": tainted,
+        "Length": length,
+        "Pointer range": addr_range,
+        "Pointer can wrap address space": can_wrap,
+        "Pointer can lie in enclave": ptr_in_enclave,
+    }
     if data is not None:
         extra["Data"] = state.solver.simplify(data)
     if extra_info is not None:
         extra["Extra info"] = extra_info
 
+    extra_sections = {}
+    if concrete_register_vals:
+        extra_sections["Concrete register values"] = [
+            (
+                ("Register", "Value"),
+                [(pand_reg, f"0x{val:08x}") for pand_reg, val in concrete_register_vals],
+                "table",
+            )
+        ]
+    if concrete_memory_vals:
+        extra_sections["Concrete memory values"] = [
+            (
+                ("Symbolic variable", "Concrete content", "Concrete address", "Symbolic address", "Size of access"),
+                [(pand_addr, f"0x{content:08x}", f"0x{address:08x}", f"{symb_addr}", f"0x{size:x} bytes") for pand_addr, content, address, symb_addr, size in concrete_memory_vals],
+                "table",
+            )
+        ]
+
     # Lastly, send off that issue to the reporter
-    reporter.report(info, state, logger, shortname, severity, extra)
+    reporter.report(
+        info,
+        state,
+        logger,
+        shortname,
+        severity=severity,
+        extra_info=extra,
+        extra_sections=extra_sections,
+    )
 
     # Run taint action if requested
     taint_action(state=state, info=info, unique=unique, level=severity)

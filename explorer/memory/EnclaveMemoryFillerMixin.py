@@ -5,7 +5,7 @@ from angr.storage.memory_mixins.memory_mixin import MemoryMixin
 
 import ui.report
 from explorer.enclave import buffer_entirely_inside_enclave, buffer_touches_enclave
-from explorer.taint import get_tainted_mem_bits
+from explorer.taint import MemoryAddressAnnotation, get_tainted_mem_bits
 from sdks.SDKManager import SDKManager
 from ui.action_manager import ActionManager
 from ui.report import Reporter
@@ -37,7 +37,8 @@ class EnclaveMemoryFillerMixin(MemoryMixin):
 
         if SDKManager().addr_in_unmeasured_uninitialized_page(addr, size):
             # Address is in an unmeasured enclave page. Return a purely symbolic value
-            mem = get_tainted_mem_bits(self.state, size * 8)
+            address_annotation = MemoryAddressAnnotation(addr, size)
+            mem = get_tainted_mem_bits(self.state, size * 8, annotations=[address_annotation])
             logger.log(
                 logging.WARNING if inspect else logging.DEBUG,  # If we are not inspecting, this is not an issue
                 f"Buffer {addr:#x} (size {size}) lies within unmeasured memory! Returning tainted memory {str(mem)}.",
