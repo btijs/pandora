@@ -8,7 +8,7 @@ import pandora_options as po
 import ui.log_format as log_format
 import ui.log_setup
 from explorer.engine.PandoraEngine import PandoraEngine
-from explorer.techniques.HALMemoryCheckMerger import HALMemoryCheckMerger
+from explorer.techniques.ManualMerger import ManualMerger
 from ui.action import UserActionWithLevel
 from ui.action_manager import ActionManager
 from ui.log_format import get_state_backtrace_compact, get_state_backtrace_formatted
@@ -189,8 +189,14 @@ class BasicBlockExplorer(AbstractExplorer):
             if pandora_options[po.PANDORA_EXPLORE_USE_LOOP_SEER]:
                 self.simgr.use_technique(PandoraLoopSeer(bound=pandora_options[po.PANDORA_EXPLORE_LOOP_SEER_BOUND]))
 
-            self.simgr.use_technique(HALMemoryCheckMerger(project=self.proj, wait_counter=10))
-            if True:
+            # For tfm
+            addr = self.proj.loader.find_symbol("tfm_hal_memory_check")
+            if addr:
+                start_addr = addr.rebased_addr
+                merge_addr = start_addr + 12
+                self.simgr.use_technique(ManualMerger(start_addr, merge_addr, wait_counter=10))
+
+            if False:
                 self.simgr.use_technique(RealSoftwareStatePruning(Path(self.proj.filename).parent / "trace.txt"))
 
             # To log basic blocks when logging is set to TRACE, we use the TraceLogger

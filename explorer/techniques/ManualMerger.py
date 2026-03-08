@@ -10,15 +10,17 @@ from angr.exploration_techniques import ExplorationTechnique
 logger = logging.getLogger(name=__name__)
 
 
-class HALMemoryCheckMerger(ExplorationTechnique):
-    def __init__(self, project, wait_counter=10, prune=True):
+class ManualMerger(ExplorationTechnique):
+    def __init__(self, start_addr, merge_addr, wait_counter=10, prune=True):
         super().__init__()
-        self.start_address = project.loader.find_symbol("tfm_hal_memory_check").rebased_addr
-        self.merge_address = self.start_address + 12
+        self.start_address = start_addr
+        self.merge_address = merge_addr
         self.wait_counter_limit = wait_counter
         self.prune = prune
         self.stashes: dict[str, int] = {}  # stash name -> wait counter
         self.filter_marker = f"skip_next_filter_{self.merge_address:#x}"
+
+        logger.info(f"Initialized ManualMerger with start_addr={self.start_address:#x}, merge_addr={self.merge_address:#x}, wait_counter={self.wait_counter_limit}, prune={self.prune}")
 
     def mark_nofilter(self, simgr, stash):
         for state in simgr.stashes[stash]:
@@ -76,11 +78,12 @@ class HALMemoryCheckMerger(ExplorationTechnique):
                 simgr.move(src_stash, stash)
                 continue
 
-            # do the merge, keyed by unique callstack
-            logger.info(f"Merging {len(simgr.stashes[src_stash])} states at {self.merge_address:#x}")
-
             # Merge states and add to active stash
             grouped_states = self.group_states_by_return_value(simgr.stashes[src_stash])
+
+            logger.info(f"Merging {len(simgr.stashes[src_stash])} states at {self.merge_address:#x} with return values {[state.regs.r0 for state in simgr.stashes[src_stash]]}")
+            logger.info(f"Resulting groups: { {ret_val: len(states) for ret_val, states in grouped_states.items()} }")
+
             for states in grouped_states.values():
                 merged_state = self.merge_states_with_same_return(states)
                 if merged_state is not None:
