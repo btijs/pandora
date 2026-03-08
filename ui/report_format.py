@@ -424,14 +424,14 @@ class ReportFormatter:
 
         ip = item["ip"]
         sym = item["symbol"]
-        ips[logging.getLevelName(item["severity"])].add((ip, item["info"]))
+        ips[logging.getLevelName(item["severity"])].add((ip, self.truncate(item["info"])))
 
         # Store extended info in formatted report
-        fmt.section(ip, sym, item["info"], item["severity"])
+        fmt.section(ip, sym, self.truncate(item["info"]), item["severity"])
 
         if len(item["extra"]) > 0:
             fmt.subsection("Plugin extra info")
-            fmt.table(item["extra"])
+            fmt.table(None, [(name, self.truncate(content)) for name, content in item["extra"].items()])
 
         def _add_extra_section(group_name):
             if group_name in item["extra-sections"]:
@@ -442,7 +442,7 @@ class ReportFormatter:
                     elif env_type == "verbatim":
                         fmt.verbatim(name, content)
                     elif env_type == "table":
-                        fmt.table(content)
+                        fmt.table(name, content)
 
         fmt.subsection("Execution state info")
         fmt.verbatim("Disassembly", item["asm"])
@@ -450,7 +450,7 @@ class ReportFormatter:
         _add_extra_section("Execution state info")
 
         fmt.subsection("Backtrace")
-        fmt.trace(f"Basic block trace (most recent first) - Length: {len(item['backtrace'])}", item["backtrace"])
+        fmt.trace(f"Basic block trace (most recent first) - Length: {len(item['backtrace'])} {'truncated to 1000' if len(item['backtrace']) > 1000 else ''}", item["backtrace"][:1000] + (["... (truncated)"] if len(item["backtrace"]) > 1000 else []))  # Truncate backtrace to avoid generating huge reports
         _add_extra_section("Backtrace")
 
         fmt.subsection("Constraints")
@@ -461,3 +461,6 @@ class ReportFormatter:
         for group in [g for g in list(item["extra-sections"].keys()) if g not in ["Execution state info", "Backtrace", "Constraints"]]:
             fmt.subsection(group)
             _add_extra_section(group)
+
+    def truncate(self, s, max_len=1000):
+        return s[:max_len] + ("... (truncated)" if len(s) > max_len else "")
