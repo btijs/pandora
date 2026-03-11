@@ -343,19 +343,17 @@ class ReportFormatter:
 
         self.reporter_level = logging.getLevelName(reporter_level.upper())
 
-        self.metadata = report_data["metadata"]
-        if self.metadata["type"] != JsonEntryId.ENTRY_ID_METADATA:
-            raise Exception("Read Json file does not have the right format (metadata error)")
-
+        self.metadata = {}
         self.plugin_entries = []
         self.data = []
-        for k, v in report_data.items():
-            if k == "metadata":
-                continue
-            self.plugin_entries.append({k1: v1 for k1, v1 in v.items() if k1 != "events"})
 
-            for event in v.get("events", []):
-                self.data.append(event)
+        for item in report_data:
+            if item["type"] == JsonEntryId.ENTRY_ID_METADATA:
+                self.metadata = item
+            elif item["type"] == JsonEntryId.ENTRY_ID_PLUGIN:
+                self.plugin_entries.append(item)
+            elif item["type"] == JsonEntryId.ENTRY_ID_DATA:
+                self.data.append(item)
 
         # Initialize formatters for each plugin
         self.plugins = {}

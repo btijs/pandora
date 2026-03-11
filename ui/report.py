@@ -104,6 +104,7 @@ class Reporter(metaclass=Singleton):
         path = generate_basedir("log_folder", Path(binary))
         self.filepath = path / f"{generate_filename('log_filename', Path(binary))}.json"
         self.filename = self.filepath.resolve()
+        self.file = open(self.filename, "w")
 
         self.start = timeit.default_timer()
 
@@ -114,10 +115,12 @@ class Reporter(metaclass=Singleton):
         self.unique_issues = {}
 
         # Create dictionary for reporting
-        self.report_data = {}
+        self.metadata = {}
 
         # The first object in each json contains metadata
-        self.report_data["metadata"] = {"type": JsonEntryId.ENTRY_ID_METADATA, "binary": Path(binary).name, "time": datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), "start_timestamp": datetime.datetime.now().timestamp(), "sdk": sdk_name}
+        self.metadata = {"type": JsonEntryId.ENTRY_ID_METADATA, "binary": Path(binary).name, "time": datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), "start_timestamp": datetime.datetime.now().timestamp(), "sdk": sdk_name}
+
+        self.file.write("[\n")
 
         # Start the reporter by registering the system events plugin for relevant system events
         self.register_plugin("SystemEvents", "Relevant events during Pandora execution.", SYSTEM_EVENTS_REPORT_NAME)
@@ -132,7 +135,8 @@ class Reporter(metaclass=Singleton):
         self.plugins[shortname] = {"name": name, "ip": defaultdict(set)}
 
         plugin_data = {"type": JsonEntryId.ENTRY_ID_PLUGIN, "name": name, "desc": desc, "shortname": shortname}
-        self.report_data[shortname] = plugin_data
+        self.file.write(json.dumps(plugin_data))
+        self.file.write(",\n")
 
         # also register this plugin with the unique issues
         self.unique_issues[shortname] = set()
@@ -145,8 +149,8 @@ class Reporter(metaclass=Singleton):
         # First, write metadata to json
         addr_len = SDKManager().sdk.project.arch.bits // 4
         enclave_ranges = [f"(0x{min:0{addr_len}X}, 0x{max:0{addr_len}X})" for (min, max) in get_enclave_range()]
-        self.report_data["metadata"]["enclave_ranges"] = enclave_ranges
-        self.report_data["metadata"]["stop_timestamp"] = datetime.datetime.now().timestamp()
+        self.metadata["enclave_ranges"] = enclave_ranges
+        self.metadata["stop_timestamp"] = datetime.datetime.now().timestamp()
 
         for shortname, plug in self.plugins.items():
             lvl_summaries = []
@@ -167,8 +171,9 @@ class Reporter(metaclass=Singleton):
                 log_always(logger, format_table(pretty_ips.items(), ("Severity", f"Reports by {name}")))
 
         # Now, write the report data to file
-        with open(self.filename, "w") as file:
-            file.write(json.dumps(self.report_data))
+        self.file.write(json.dumps(self.metadata) + "\n")
+        self.file.write("]\n")
+        self.file.close()
 
         log_always(logger, f"\n\nPandora log data stored at {format_link(self.filename, self.filename)}")
 
@@ -274,4 +279,8 @@ class Reporter(metaclass=Singleton):
                 "extra-sections": extra_sections,
             }
 
-            self.report_data[plugin_shortname].setdefault("events", []).append(report_element)
+            # self.report_data[plugin_shortname].setdefault("events", []).append(report_element)
+
+            self.file.write(json.dumps(report_element))
+            self.file.write(",\n")
+            self.file.flush()
