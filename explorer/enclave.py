@@ -110,6 +110,10 @@ def buffer_touches_enclave(state, addr, length, use_enclave_range: None | [tuple
     :param length: The length of the buffer so that addr + length is the first address AFTER the buffer.
     :param use_enclave_range: An OPTIONAL list of tuples to overwrite the enclave range or None to use the default enclave range. Use for testing only.
     """
+    if not state.solver.satisfiable():
+        # If the state is already unsat, we can not have a buffer that touches the enclave, so return False immediately
+        return False
+
     if not use_enclave_range:
         use_enclave_range = get_enclave_range()
 
@@ -144,7 +148,7 @@ def _check_entirely_inside(bv_addr, length, enclave_min_addr, enclave_max_addr, 
     We can abort immediately if the length of the buffer is larger than the size of the enclave.
     These buffers can never fully lie inside the enclave.
     """
-    if solver.satisfiable(extra_constraints=[enclave_min_addr >= max_allowed_addr_inside_enclave]):
+    if solver.satisfiable(extra_constraints=[enclave_min_addr > max_allowed_addr_inside_enclave]):
         return False
 
     can_lie_outside = claripy.Or(bv_addr.ULT(enclave_min_addr), bv_addr.UGT(max_allowed_addr_inside_enclave))
@@ -169,6 +173,10 @@ def buffer_entirely_inside_enclave(state, address, buffer_length, use_enclave_ra
     :param buffer_length: The length of the buffer so that addr + length is the first address AFTER the buffer.
     :param use_enclave_range: An OPTIONAL list of tuples to overwrite the enclave range or None to use the default enclave range. Use for testing only.
     """
+    if not state.solver.satisfiable():
+        # If the state is already unsat, we can not have a buffer that lies entirely inside the enclave, so return False immediately
+        return False
+
     if not use_enclave_range:
         use_enclave_range = get_enclave_range()
 
