@@ -82,6 +82,7 @@ class PandoraContext:
     sdk_elf_file: Path
     sdk_json_file: Path
     idau_json_file: Path
+    tfm_func_num: int
 
 
 def pandora_setup(pandora_ctx: PandoraContext, binary_path: Path):
@@ -125,7 +126,7 @@ def pandora_setup(pandora_ctx: PandoraContext, binary_path: Path):
         SDK Setup
         """
         # Init binary manager to detect sdk
-        sdk_mgr = SDKManager(binary_path, pandora_ctx.sdk_detection_type, elf_file=pandora_ctx.sdk_elf_file, sdk_json_file=pandora_ctx.sdk_json_file, angr_log_level=pandora_ctx.angr_log_level, idau_json_file=pandora_ctx.idau_json_file)
+        sdk_mgr = SDKManager(binary_path, pandora_ctx.sdk_detection_type, elf_file=pandora_ctx.sdk_elf_file, sdk_json_file=pandora_ctx.sdk_json_file, angr_log_level=pandora_ctx.angr_log_level, idau_json_file=pandora_ctx.idau_json_file, tfm_func_num=pandora_ctx.tfm_func_num)
 
         # Load binary in angr and initialize the state. Load binary with offset defined by detected SDK
         my_explorer = BasicBlockExplorer(binary_path, action_mgr.leveled_actions["explorer"], sdk_mgr.get_load_addr(), angr_backend=sdk_mgr.get_angr_backend(), angr_arch=sdk_mgr.get_angr_arch())
@@ -398,7 +399,7 @@ def pandora_selftest(pandora_ctx: PandoraContext):
     _run_test("default_memory", test_default_memory(init_state))
 
     if total_issues > 0:
-        logger.info("Issue overview:\n" + format_table(issue_list, "Test", "Number of issues"))
+        logger.info("Issue overview:\n" + format_table(issue_list, ("Test", "Number of issues")))
         log_always(logger, format_bad(f"Warning: Had {total_issues} issues in total across {num_tests} tests."))
     else:
         log_always(logger, format_good(f"Success! Had {total_issues} issues in total across {num_tests} tests."))
@@ -491,7 +492,10 @@ def action_callback(ctx: typer.Context, value: List | None):
 
 def plugin_options_callback(ctx: typer.Context, value: List):
     if ctx.resilient_parsing:
-        return
+        return []
+
+    if value is None:
+        return []
 
     options_list = []
     for i in value:
@@ -583,7 +587,7 @@ def main_callback(
         rich_help_panel="Exploration options",
     ),
     pandora_options: Optional[List[str]] = typer.Option(
-        None, "--pandora-option", callback=plugin_options_callback, help="Sets a specific advanced option via the format [bold]option=value[/]. Default values shown below. " + format_help_options("option", po.PandoraOptions().get_options_dict()), rich_help_panel="Exploration options"
+        [], "--pandora-option", callback=plugin_options_callback, help="Sets a specific advanced option via the format [bold]option=value[/]. Default values shown below. " + format_help_options("option", po.PandoraOptions().get_options_dict()), rich_help_panel="Exploration options"
     ),
     sdk_detection_type: str = typer.Option(
         "auto",
@@ -629,7 +633,7 @@ def main_callback(
         "-a",
         "--action",
         callback=action_callback,
-        help="Adds an action bound to a specific event via the format [bold]event\\[level]=action[/].\n\n"
+        help="Adds an action bound to a specific event via the format [bold]event\\[level]=action[/] or [bold]event=action[/].\n\n"
         + " The level is optional and can be used to specify the minimum log level for the event to trigger the action."
         + format_help_options("event", {**ActionManager.get_system_events(), **{p: f"For events reported by the '{p}' plugin (see below)." for p in PluginManager.get_plugin_names()}})
         + format_help_options("level", LogLevel.get_log_levels())
@@ -639,6 +643,7 @@ def main_callback(
     report_fmt: str = typer.Option("html", "-r", "--report", callback=report_callback, metavar="[" + "|".join(report_formats.keys()) + "]", help="Define the format for all plugin reports.", rich_help_panel="Report generation"),
     report_max_ips: int = typer.Option(0, "--report-ips", help="Maximum number of duplicate reports per unique IP for all plugin HTML reports. 0 or negative to report all.", rich_help_panel="Report generation"),
     with_cfg: bool = typer.Option(False, "--with-cfg", help="EXPERIMENTAL: Exports a CFG on exit after finishing exploration. CFG will contain information on reached basic blocks. Feature may break or stall exploration completely, depending on binary..", rich_help_panel="Exploration options"),
+    tfm_func_num: int = typer.Option(-1, "--tfm-func-num", help="If analyzing a TF-M binary, the function number of the TF-M function. This is used when sequentially analyzing the binary.", rich_help_panel="Options for ARM binaries"),
 ):
     """
     Pandora: Principled vulnerability detection for SGX binaries.

@@ -82,7 +82,7 @@ class AbstractSDK:
         Receives the reentry state and can modify it before execution continues.
         Useful for SDKs that need to set specific registers or add constraints to the reentry state to speed up exploration or to make it work at all.
         """
-        pass
+        return []
 
     def is_eexit_target(self, addr):
         """

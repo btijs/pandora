@@ -1,14 +1,15 @@
 import logging
 import sys
-from pathlib import Path
 
 import angr
+from angr.exploration_techniques import MemoryWatcher
 
 import pandora_options as po
 import ui.log_format as log_format
 import ui.log_setup
 from explorer.engine.PandoraEngine import PandoraEngine
 from explorer.techniques.ManualMerger import ManualMerger
+from explorer.techniques.Reporter import Reporter
 from ui.action import UserActionWithLevel
 from ui.action_manager import ActionManager
 from ui.log_format import get_state_backtrace_compact, get_state_backtrace_formatted
@@ -21,7 +22,6 @@ from .techniques.EnclaveReentry import EnclaveReentry
 from .techniques.ExplorationStatistics import ExplorationStatistics
 from .techniques.PandoraDFS import PandoraDFS
 from .techniques.PandoraLoopSeer import PandoraLoopSeer
-from .techniques.RealSoftwareStatePruning import RealSoftwareStatePruning
 from .techniques.TraceLogger import TraceLogger
 
 logger = logging.getLogger(__name__)
@@ -189,22 +189,28 @@ class BasicBlockExplorer(AbstractExplorer):
             if pandora_options[po.PANDORA_EXPLORE_USE_LOOP_SEER]:
                 self.simgr.use_technique(PandoraLoopSeer(bound=pandora_options[po.PANDORA_EXPLORE_LOOP_SEER_BOUND]))
 
+            self.simgr.use_technique(MemoryWatcher(min_memory=1024 * 3))  # 3GB free
+
             # For tfm
-            addr = self.proj.loader.find_symbol("tfm_hal_memory_check")
-            if addr:
-                start_addr = addr.rebased_addr
+            tfm_hal_memory_check_symbol = self.proj.loader.find_symbol("tfm_hal_memory_check")
+            cmse_check_address_range_symbol = self.proj.loader.find_symbol("cmse_check_address_range")
+            if tfm_hal_memory_check_symbol is not None:
+                start_addr = tfm_hal_memory_check_symbol.rebased_addr
                 merge_addr = start_addr + 12
                 self.simgr.use_technique(ManualMerger(start_addr, merge_addr, wait_counter=10))
 
-            if False:
-                self.simgr.use_technique(RealSoftwareStatePruning(Path(self.proj.filename).parent / "trace.txt"))
+            # For riot-tee
+            elif cmse_check_address_range_symbol is not None:
+                start_addr = cmse_check_address_range_symbol.rebased_addr
+                merge_addr = start_addr + 58
+                self.simgr.use_technique(ManualMerger(start_addr, merge_addr, wait_counter=10))
 
             # To log basic blocks when logging is set to TRACE, we use the TraceLogger
             self.simgr.use_technique(TraceLogger())
 
             # We keep runtime statistics in a dict that logs each symbol to a count. This is reported in system events on end.
-            self.statistics_technique = ExplorationStatistics(self.initial_state)
-            self.simgr.use_technique(self.statistics_technique)
+            self.simgr.use_technique(ExplorationStatistics(self.initial_state))
+            self.simgr.use_technique(Reporter())
 
             # Enable the execution tracking to not jump to code pages that are not marked as executable
             self.simgr.use_technique(ControlFlowTracker(self.initial_state))
@@ -247,4 +253,6 @@ class BasicBlockExplorer(AbstractExplorer):
         BasicBlockExplorer needs to perform a final reporting at the end of stepping to allow the statistics to
         report accurately.
         """
-        self.statistics_technique.report_stats()
+        for tech in self.simgr._techniques:
+            if hasattr(tech, "finish"):
+                tech.finish()

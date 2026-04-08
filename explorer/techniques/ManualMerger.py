@@ -53,7 +53,7 @@ class ManualMerger(ExplorationTechnique):
                 last_index = next((i for i, addr in enumerate(reversed(history_addrs)) if addr == self.start_address), 0)
                 history_hash = hash(tuple(history_addrs)[: -last_index - 1])
 
-                stash_name = f"merge_waiting_{self.merge_address:#x}_ret_{return_addr:#x}_history_{history_hash:x}"
+                stash_name = f"manualmerge_waiting_{self.merge_address:#x}_ret_{return_addr:#x}_history_{history_hash:x}"
 
                 self.stashes[stash_name] = 0
                 simgr.stashes[stash_name].append(state)
@@ -83,6 +83,7 @@ class ManualMerger(ExplorationTechnique):
 
             logger.info(f"Merging {len(simgr.stashes[src_stash])} states at {self.merge_address:#x} with return values {[state.regs.r0 for state in simgr.stashes[src_stash]]}")
             logger.info(f"Resulting groups: { {ret_val: len(states) for ret_val, states in grouped_states.items()} }")
+            logger.debug(f"All stashes before merging: { {s: len(simgr.stashes[s]) for s in simgr.stashes} }")
 
             for states in grouped_states.values():
                 merged_state = self.merge_states_with_same_return(states)
@@ -142,12 +143,14 @@ class ManualMerger(ExplorationTechnique):
         if len(states) == 1:
             return states[0]
 
+        common_constraints = set.intersection(*(set(state.solver.constraints) for state in states))
+
         # Build the merged constraint: constraints1 || constraints2 || ...
         merged_constraint_parts = []
 
         for state in states:
             # Get all constraints from this state
-            state_constraints = list(state.solver.constraints)
+            state_constraints = set(state.solver.constraints) - common_constraints
 
             if state_constraints:
                 constraint = claripy.And(*state_constraints)
@@ -158,6 +161,6 @@ class ManualMerger(ExplorationTechnique):
         # merged_constraint = claripy.simplify(merged_constraint)
 
         # Clear existing constraints and add the merged one
-        states[0].solver.reload_solver(merged_constraint)
+        states[0].solver.reload_solver(list(common_constraints) + [merged_constraint])
 
         return states[0]

@@ -202,7 +202,7 @@ class SDKManager(metaclass=Singleton):
         Called after explorer prepared the reentry state but before exploration continues after reentry.
         Useful for SDKs that need to modify the reentry state or add constraints to it to speed up exploration or to make it work at all.
         """
-        self.sdk.modify_reentry_state(reentry_state)
+        return self.sdk.modify_reentry_state(reentry_state)
 
     def __get_sdk_class(self):
         """

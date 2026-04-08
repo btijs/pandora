@@ -1,10 +1,12 @@
 import logging
 import os
+import re
 
 import angr
 import claripy
-import z3
+from claripy import UninitializedAnnotation
 
+from explorer.taint import AttackerTaintConservative
 from sdks.AbstractSDK import AbstractSDK
 from sdks.SAU_IDAU import IDAU, SAU, FullAttributionUnit
 from utilities.angr_helper import set_reg_value
@@ -29,6 +31,8 @@ class ArmCortexM(AbstractSDK):
         self.idau = IDAU(idau_json_file)
         self.au = FullAttributionUnit(self.idau, self.sau)
         self.init_state.register_plugin("full_attribution_unit", self.au)
+
+        self.tfm_func_num = kwargs.get("tfm_func_num", -1)
 
         # Setup ELF segments (skip first segment)
         for segment in list(elffile.iter_segments())[1:]:
@@ -59,7 +63,7 @@ class ArmCortexM(AbstractSDK):
         return "ARMCortexM"
 
     def get_safe_registers(self) -> list[str]:
-        return super().get_safe_registers() + ["control", "cpsr", "cc_op", "cc_dep1", "itstate", "msp", "msp_s", "psp", "psp_s"]
+        return super().get_safe_registers() + ["control", "cpsr", "cc_op", "cc_dep1", "itstate", "msp", "msp_s", "psp", "psp_s", "sp", "primask"]
 
     def init_eenter_state(self, eenter_state):
         # Setup initial PC
@@ -92,88 +96,165 @@ class ArmCortexM(AbstractSDK):
 
     def modify_reentry_state(self, reentry_state):
         logger.info(f"Modifying reentry state for ArmCortexM SDK... at address {hex(reentry_state.addr)}")
-        if reentry_state.addr == self.project.loader.find_symbol("tfm_psa_call_veneer").rebased_addr:
+        if self.project.loader.find_symbol("tfm_psa_call_veneer") and reentry_state.addr == self.project.loader.find_symbol("tfm_psa_call_veneer").rebased_addr:
             logger.info("Modifying reentry state for tfm_psa_call_veneer...")
-            # Set constraints to select correct partition on reentry
-            # First argument (r0) is handle
-            # crypto: 0x40000100U
-            # initial attestation: 0x40000103U
-            # internal trusted storage: 0x40000102U
-            # TODO: now hardcoded to crypto partition, make more generic
-            handle = 0x40000100
-            reentry_state.regs.r0 = handle
+            # Loop over all possible constraints and return all possible states
+            next_states = []
+            # next_states += self.setup_crypto_constraints(reentry_state.copy())
+            # next_states += self.setup_its_constraints(reentry_state.copy())
+            # next_states += self.setup_sp_platform_constraints(reentry_state.copy())
+            # next_states += self.setup_attest_constraints(reentry_state.copy())
+            next_states += self.setup_fwu_constraints(reentry_state.copy())
+            if self.tfm_func_num != -1:
+                logger.info(f"Calling function {next_states[self.tfm_func_num].globals.get('tfm_group', 'unknown')}::{next_states[self.tfm_func_num].globals.get('tfm_function', 'unknown')} based on tfm_func_num = {self.tfm_func_num}")
+                return [next_states[self.tfm_func_num]]
+            return next_states
+        else:
+            for symbol in ["tfm_psa_connect_veneer", "tfm_psa_close_veneer", "tfm_psa_version_veneer", "tfm_psa_framework_version_veneer"]:
+                if self.project.loader.find_symbol(symbol) and reentry_state.addr == self.project.loader.find_symbol(symbol).rebased_addr:
+                    reentry_state.globals["tfm_group"] = "other"
+                    reentry_state.globals["tfm_function"] = symbol.replace("_veneer", "").replace("tfm_psa_", "")
+            return [reentry_state]
 
-            mem_slice = None
+    def setup_crypto_constraints(self, reentry_state):
+        # Memory breakpoint when the address in r2 (in_vec) is accessed, to add constraints on the input buffer
+        # To go to crypto partition
+        def in_vec_mem_read_hook(state, group_id, func_num):
+            if state.solver.is_true(state.inspect.mem_read_address == reentry_state.regs.r2):
+                expr = state.inspect.mem_read_expr
+                in_vec_base = claripy.BVS("in_vec_base", 32, annotations=taint_mem_annotations())
+                new_expr = claripy.Concat(
+                    in_vec_base.reversed,
+                    claripy.BVV(0x38, 32).reversed,  # len(tfm_crypto_pack_iovec)
+                )
+                if expr.size() != new_expr.size():
+                    new_expr = claripy.Concat(new_expr, claripy.Extract(expr.size() - new_expr.size() - 1, 0, expr))
+                state.inspect.mem_read_expr = new_expr
 
-            # Memory breakpoint when the address in r2 (in_vec) is accessed, to add constraints on the input buffer
-            # To go to crypto partition
-            def in_vec_mem_read_hook(state0):
-                if not state0.solver.is_true(state0.inspect.mem_read_address == reentry_state.regs.r2):
-                    return  # Not the in_vec address, ignore
+                logger.info(f"Reading from in_vec address {state.inspect.mem_read_address}, r2 = {reentry_state.regs.r2}, reading expression: {state.inspect.mem_read_expr}")
 
-                logger.info(f"Reading from in_vec address {state0.inspect.mem_read_address}, r2 = {reentry_state.regs.r2}")
+            elif not isinstance(state.inspect.mem_read_address, int) and not state.inspect.mem_read_address.concrete and any(ast.symbolic and bool(re.match("^in_vec_base_[0-9]+_32$", ast.args[0])) for ast in state.inspect.mem_read_address.leaf_asts()):
+                # Now, we can add the constraints
+                # expr is of type `tfm_crypto_pack_iovec`
+                #   - `psa_key_id_t key_id` (to specify key), which is located at offset 0.
+                #   - `psa_algorithm_t alg` (to specify algorithm), which is located at offset 4.
+                #   - `uint16_t function_id` (to specify specific function), which is located at offset 40.
+                # Need to reverse required bytes due to endianness
+                key_id = None
+                alg = None
 
-                nonlocal mem_slice
-                mem_slice = state0.inspect.mem_read_expr[255:224]
+                function_id = None
+                if group_id is not None and func_num is not None:
+                    function_id = (group_id << 8) | func_num
 
-                # Memory breakpoint when the base address of the previous result is accessed
-                # To go to specific crypto function within crypto partition
-                def in_vec0_base_mem_read_hook(state1):
-                    if isinstance(state1.inspect.mem_read_address, int) or state1.inspect.mem_read_address.concrete:
-                        # Fast fail path
-                        return
+                old_expr = state.inspect.mem_read_expr
+                new_expr = claripy.BVV(0, 0)
 
-                    # Initialize the native Z3 Solver
-                    s = z3.Solver()
-                    bz3 = claripy.backends.z3
+                if key_id is not None:
+                    new_expr = claripy.Concat(new_expr, claripy.BVV(key_id, 32).reversed)
+                else:
+                    new_expr = claripy.Concat(new_expr, claripy.BVS("key_id", 32, annotations=taint_mem_annotations()).reversed)
 
-                    # Migrate existing constraints from Claripy to Z3
-                    s.add(bz3.convert_list(state1.solver.constraints))
+                if alg is not None:
+                    new_expr = claripy.Concat(new_expr, claripy.BVV(alg, 32).reversed)
+                else:
+                    new_expr = claripy.Concat(new_expr, claripy.BVS("alg", 32, annotations=taint_mem_annotations()).reversed)
 
-                    # Create fresh leaf variable
-                    z3_proxy_mem = z3.BitVec("proxy_mem_32", 32)
+                new_expr = claripy.Concat(new_expr, claripy.BVS("padding1", 256, annotations=taint_mem_annotations()).reversed)
 
-                    # Convert your vectors and the "universal" variable
-                    z3_original_slice = bz3.convert(mem_slice)
-                    z3_vector_a = bz3.convert(state1.solver.simplify(state1.inspect.mem_read_address.reversed))
-                    z3_vector_b = bz3.convert(mem_slice)
+                if function_id is not None:
+                    new_expr = claripy.Concat(new_expr, claripy.BVV(function_id, 32).reversed)
+                else:
+                    new_expr = claripy.Concat(new_expr, claripy.BVS("function_id", 32, annotations=taint_mem_annotations()).reversed)
 
-                    z3_vector_a_sub = z3.substitute(z3_vector_a, (z3_original_slice, z3_proxy_mem))
-                    z3_vector_b_sub = z3.substitute(z3_vector_b, (z3_original_slice, z3_proxy_mem))
+                if old_expr.size() > new_expr.size():
+                    new_expr = claripy.Concat(new_expr, claripy.Extract(old_expr.size() - new_expr.size() - 1, 0, old_expr))
+                elif old_expr.size() < new_expr.size():
+                    logger.critical(f"New expression size {new_expr.size()} is larger than old expression size {old_expr.size()}, cannot replace mem_read_expr")
 
-                    print("Z3 Mem Slice:", z3_original_slice)
-                    print("Z3 Vector A:", z3_vector_a)
-                    print("Z3 Vector B:", z3_vector_b)
+                state.inspect.mem_read_expr = new_expr
 
-                    s.add(z3_proxy_mem == z3_original_slice)
+        group_functions = {
+            "random": (1, {"generate_random": 0}),
+            "key_management": (2, {"get_key_attributes": 0, "open_key": 1, "close_key": 2, "import_key": 3, "destroy_key": 4, "export_key": 5, "export_public_key": 6, "purge_key": 7, "copy_key": 8, "generate_key": 9}),
+            "hash": (3, {"compute": 0, "compare": 1, "setup": 2, "update": 3, "clone": 4, "finish": 5, "verify": 6, "abort": 7, "can_do_hash": 8}),
+            "mac": (4, {"compute": 0, "verify": 1, "sign_setup": 2, "verify_setup": 3, "update": 4, "sign_finish": 5, "verify_finish": 6, "abort": 7}),
+            "cipher": (5, {"encrypt": 0, "decrypt": 1, "encrypt_setup": 2, "decrypt_setup": 3, "generate_iv": 4, "set_iv": 5, "update": 6, "finish": 7, "abort": 8, "can_do_cipher": 9}),
+            "aead": (6, {"encrypt": 0, "decrypt": 1, "encrypt_setup": 2, "decrypt_setup": 3, "generate_nonce": 4, "set_nonce": 5, "set_lengths": 6, "update_ad": 7, "update": 8, "finish": 9, "verify": 10, "abort": 11}),
+            "asym_sign": (7, {"sign_message": 0, "verify_message": 1, "sign_hash": 2, "verify_hash": 3}),
+            "asym_encrypt": (8, {"encrypt": 0, "decrypt": 1}),
+            "key_derivation": (9, {"raw_key_agreement": 0, "setup": 1, "get_capacity": 2, "set_capacity": 3, "input_bytes": 4, "input_key": 5, "input_integer": 6, "key_agreement": 7, "output_bytes": 8, "output_key": 9, "abort": 10}),
+        }
 
-                    # Add the "Special Equality" condition
-                    # Logic: "The path constraints must hold AND (For All mem, A == B)"
-                    special_equality = z3.ForAll([z3_proxy_mem], z3_vector_a_sub == z3_vector_b_sub)
-                    s.add(special_equality)
-
-                    # 5. Solve
-                    if s.check() != z3.sat:
-                        return
-
-                    print("SAT!")
-
-                    # Now, we can add the constraints
-                    # expr is of type `tfm_crypto_pack_iovec`, we are interested in `uint16_t function_id`, which is located at offset 40.
-                    # Need to reverse 256 bytes due to endianness
-                    state1.solver.add(state1.inspect.mem_read_expr[127:96] == claripy.BVV(256, 32).reversed)
-
-                state0.inspect.b(
+        states = []
+        for group_name, (group_id, functions) in group_functions.items():
+            for func_name, func_num in functions.items():
+                new_state = reentry_state.copy()
+                new_state.inspect.b(
                     "mem_read",
                     when=angr.BP_AFTER,
-                    action=in_vec0_base_mem_read_hook,
+                    # We need to bind the current group_id and func_num to the hook function, otherwise they will be overwritten in the loop
+                    # This will result in the last group_id and func_num being used for all hooks, which is not what we want
+                    action=lambda s, bound_gid=group_id, bound_fid=func_num: in_vec_mem_read_hook(s, group_id=bound_gid, func_num=bound_fid),
                 )
+                new_state.globals["tfm_group"] = group_name
+                new_state.globals["tfm_function"] = func_name
+                new_state.globals["handle"] = 0x40000100
+                states.append(new_state)
+        return states
 
-            reentry_state.inspect.b(
-                "mem_read",
-                when=angr.BP_AFTER,
-                action=in_vec_mem_read_hook,
-            )
+    def setup_its_constraints(self, reentry_state):
+        return []
+
+    def setup_sp_platform_constraints(self, reentry_state):
+        return []
+
+    def setup_attest_constraints(self, reentry_state):
+        return []
+
+    def setup_fwu_constraints(self, reentry_state: angr.SimState):
+        reentry_state.globals["tfm_group"] = "fwu"
+        reentry_state.globals["tfm_function"] = "run_fwu"
+
+        # Setup fwu_ctx (2 x 8 bytes)
+        reentry_state.memory.store(0x30023DA0, claripy.BVS("fwu_ctx", 2 * 8 * 8))
+
+        # Setup mcuboot_ctx (2 x 8 bytes)
+        # reentry_state.memory.store(0x30023DCC, claripy.BVS("mcuboot_ctx", 2 * 8 * 8))
+
+        funcs = {
+            "TFM_FWU_START": 1001,  # 0
+            "TFM_FWU_WRITE": 1002,  # 1
+            "TFM_FWU_FINISH": 1003,  # 2
+            "TFM_FWU_CANCEL": 1004,  # 3
+            "TFM_FWU_INSTALL": 1005,  # 4
+            "TFM_FWU_CLEAN": 1006,  # 5
+            "TFM_FWU_REJECT": 1007,  # 6
+            "TFM_FWU_REQUEST_REBOOT": 1008,  # 7
+            "TFM_FWU_ACCEPT": 1009,  # 8
+            "TFM_FWU_QUERY": 1010,  # 9
+        }
+        states = []
+        for func_name, func_num in funcs.items():
+            state: angr.SimState = reentry_state.copy()
+            state.globals["tfm_group"] = "fwu"
+            state.globals["tfm_function"] = func_name.replace("TFM_FWU_", "").lower()
+            state.globals["handle"] = 0x40000104
+            state.globals["type_arg"] = func_num
+
+            if func_name != "TFM_FWU_START":
+                # First call `fwu_bootloader_staging_area_init(component, *manifest, manifest_size)`
+                addr = state.project.loader.find_symbol("fwu_bootloader_staging_area_init")
+                if addr is not None:
+                    return_addr = state.addr
+                    state.regs.r0 = 0
+                    state.regs.r1 = claripy.BVS("manifest_ptr", 32, annotations=taint_mem_annotations())
+                    state.regs.r2 = 0
+                    state.regs.lr = return_addr
+                    state.regs.ip = addr.rebased_addr
+
+            states.append(state)
+        return states
 
     def get_max_inst_size(self):
         # Maximum instruction size for ARMv8-M is 4 bytes
@@ -243,3 +324,8 @@ class ArmCortexM(AbstractSDK):
 
     def is_thumb_mode(self):
         return True
+
+
+def taint_mem_annotations() -> tuple[claripy.Annotation, ...]:
+    # TODO: maybe also add MemoryAddressAnnotation
+    return (AttackerTaintConservative(), UninitializedAnnotation())

@@ -200,7 +200,7 @@ class Reporter(metaclass=Singleton):
 
             severity_dict[plug["name"]] = s
 
-        log_always(logger, format_table(severity_dict, key_hdr="Plugin", val_hdr="Statistics"))
+        log_always(logger, format_table(severity_dict.items(), ("Plugin", "Statistics")))
 
     def report(self, info, state, callee_logger, plugin_shortname, severity=logging.INFO, extra_info=None, only_once=False, extra_sections=None):
         """

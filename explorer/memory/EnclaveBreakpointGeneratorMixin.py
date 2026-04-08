@@ -1,5 +1,6 @@
 import logging
 
+import claripy
 from angr import BP_AFTER, BP_BEFORE
 from angr.storage.memory_mixins.memory_mixin import MemoryMixin
 
@@ -17,6 +18,9 @@ class EnclaveBreakpointGeneratorMixin(MemoryMixin):
     """
 
     def store(self, addr, data, size=None, **kwargs):
+        if not self.state.solver.satisfiable():
+            return None
+
         with_enclave_boundaries = kwargs.pop("with_enclave_boundaries", True)
         breakpoint_event = ""
 
@@ -56,8 +60,11 @@ class EnclaveBreakpointGeneratorMixin(MemoryMixin):
 
             kwargs["breakpoint_event"] = breakpoint_event
 
-        # All other stores are performed normally by passing them down
-        r = super().store(addr, data, size=size, **kwargs)
+        if kwargs.get("check_only", False):
+            r = None
+        else:
+            # All other stores are performed normally by passing them down
+            r = super().store(addr, data, size=size, **kwargs)
 
         if mixin_enabled:
             # After the store, call the breakpoint again
@@ -72,19 +79,21 @@ class EnclaveBreakpointGeneratorMixin(MemoryMixin):
         return r
 
     def load(self, addr, size=None, **kwargs):
+        if not self.state.solver.satisfiable():
+            return claripy.BVV(0, size * 8) if size is not None else None
+
         with_enclave_boundaries = kwargs.pop("with_enclave_boundaries", True)
         breakpoint_event = ""
 
         # Only enable the mixin if load is called with_enclave_boundaries (default on)
         # For enclave memory, we only care about memory loads
-        mixin_enabled = with_enclave_boundaries and po.PandoraOptions().get_option(po.PANDORA_ENCLAVE_MIXIN_ENABLE) and self.category == "mem"
+        mixin_enabled = with_enclave_boundaries and po.PandoraOptions().get_option(po.PANDORA_ENCLAVE_MIXIN_ENABLE) and self.category == "mem" and self.state.solver.satisfiable()
 
         if mixin_enabled:
             if buffer_entirely_inside_enclave(self.state, addr, size):
                 logger.log(logging.TRACE, f"Reading enclave memory @{addr} size {size}")
                 breakpoint_event = "trusted_mem_read"
             elif buffer_touches_enclave(self.state, addr, size):
-                print(f"Reading memory that may lie inside or outside the enclave @{addr} size {size}")
                 breakpoint_event = "inside_or_outside_mem_read"
             else:
                 # Addr is NOT in enclave range

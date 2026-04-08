@@ -1,5 +1,6 @@
 import logging
 
+from angr import SIM_PROCEDURES
 from capstone import CS_ARCH_ARM, CS_MODE_THUMB, CS_MODE_V8, Cs
 
 from explorer.hookers.abstract_hooker import AbstractHooker
@@ -64,6 +65,8 @@ class Armv8MHooker(AbstractHooker):
     def hook_symbols(self):
         self.project.hook_symbol("memset", SimMemSet())
         self.project.hook_symbol("memcpy", SimMemCpy())
+        self.project.hook_symbol("memcpy_flash", SimMemCpy())
+        self.project.hook_symbol("memcmp", SIM_PROCEDURES["libc"]["memcmp"]())
         self.project.hook_symbol("copy_flash_region", SimCopyFlashRegion())
         self.project.hook_symbol("tfm_hal_system_reset", SimBKPT())
 
@@ -78,6 +81,6 @@ class Armv8MHooker(AbstractHooker):
 
         self.project.analyses.CFGFast()
         for addr, func in self.project.kb.functions.items():
-            if "WaitOnFlag" in func.name or "WaitFor" in func.name:
+            if "WaitOnFlag" in func.name or "WaitFor" in func.name or func.name in ["Flash_EraseSector"]:
                 logger.info(f"Hooking {func} at address 0x{addr:x}...")
                 self.project.hook_symbol(addr, SimSkipFunction(function=func))

@@ -41,7 +41,7 @@ class ExplorationStatistics(ExplorationTechnique):
         simgr = simgr.step(**kwargs)
         return simgr
 
-    def report_stats(self):
+    def finish(self):
         Reporter().report(
             "Runtime statistics of hit symbols by time of occurrence",
             self.init_state,

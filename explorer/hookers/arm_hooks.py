@@ -6,11 +6,10 @@ from angr import BP_AFTER, BP_BEFORE
 from angr.sim_procedure import SimProcedure
 from claripy import ast
 
-from explorer import taint
 from sdks.SAU_IDAU import ProcessorPrivilegeLevel, ProcessorSecurityState
 from sdks.SDKManager import SDKManager
 from ui.report import Reporter
-from utilities.angr_helper import attacker_taint_regs, get_reg_size, set_reg_value
+from utilities.angr_helper import attacker_taint_regs, set_reg_value
 from utilities.helper import auto_embed, hexify
 
 logger = logging.getLogger(__name__)
@@ -64,6 +63,9 @@ class SimSG(SimProcedure):
             raise ValueError("State does not have 'secure' global variable set")
         elif not self.state.globals["secure"]:
             # Coming from non-secure world, switch to secure
+            attacker_taint_regs(self.state, SDKManager().get_safe_registers() + ["pc", "sp", "msp", "psp", "msplim", "psplim"])
+            self.setup_reg_constraints()
+
             # Bit 0 of lr must be set to 0
             self.state.regs.lr = self.state.regs.lr & ~1
 
@@ -75,6 +77,24 @@ class SimSG(SimProcedure):
             # Bit 0 of lr must be set to 1
             self.state.regs.lr = self.state.regs.lr | 1
         self.jump(self.state.addr + 4)
+
+    def setup_reg_constraints(self):
+        # Set constraints to select correct partition on reentry
+        # First argument (r0) is handle
+        # Second argument (r1) is a bitfield with in_len (8 bits), out_len (8 bits) and type_arg (16 bits)
+        handle = self.state.globals.get("handle", None)
+        type_arg = self.state.globals.get("type_arg", None)
+        in_len = self.state.globals.get("in_len", None)
+        out_len = self.state.globals.get("out_len", None)
+        print(f"Setting up register constraints: handle={handle}, type_arg={type_arg}, in_len={in_len}, out_len={out_len}")
+        if handle is not None:
+            self.state.regs.r0 = handle
+        if type_arg is not None:
+            self.state.regs.r1 = self.state.regs.r1 & 0xFFFF0000 | (type_arg & 0xFFFF)
+        if in_len is not None:
+            self.state.regs.r1 = self.state.regs.r1 & 0x00FFFFFF | ((in_len & 0xFF) << 24)
+        if out_len is not None:
+            self.state.regs.r1 = self.state.regs.r1 & 0xFF00FFFF | ((out_len & 0xFF) << 16)
 
 
 class SimBXNS(SimProcedure):
@@ -124,8 +144,13 @@ class SimBXNS(SimProcedure):
         for sg_addr in sg_instr_addrs[-1:]:
             new_state = tainted_state.copy()
             new_state.globals["secure"] = False
-            self.successors.add_successor(new_state, sg_addr + 1, claripy.true(), "Ijk_Boring")
-            SDKManager().modify_reentry_state(new_state)
+            # self.successors.add_successor(new_state, sg_addr + 1, claripy.true(), "Ijk_Boring")
+            # continue
+            new_state.globals["just_entered_secure"] = True
+            new_state.ip = sg_addr + 1
+            states = SDKManager().modify_reentry_state(new_state)
+            for s in states:
+                self.successors.add_successor(s, s.ip, claripy.true(), "Ijk_Boring")
 
     def handle_secure_jump(self, jmp_addr, l_flag: bool):
         logger.info(f"Handling secure jump to address {jmp_addr} with lsb == 1.")
@@ -238,28 +263,42 @@ class SimMemSet(SimProcedure):
         self.ret(dest)
 
 
-def copy_memory(state: angr.SimState, dest, src, count):
+def load_memory(state: angr.SimState, addr, size):
     # Get concrete values if possible
     # Try all regs separately
     try:
-        dest = state.solver.eval_one(dest)
+        addr = state.solver.eval_one(addr)
     except (angr.errors.SimUnsatError, angr.errors.SimValueError):
         pass
     try:
-        src = state.solver.eval_one(src)
-    except (angr.errors.SimUnsatError, angr.errors.SimValueError):
-        pass
-    try:
-        count = state.solver.eval_one(count)
+        size = state.solver.eval_one(size)
     except (angr.errors.SimUnsatError, angr.errors.SimValueError):
         pass
 
-    if isinstance(dest, int) and isinstance(src, int) and isinstance(count, int):
-        logger.info(f"Performing concrete memcpy from address 0x{src:x} to address 0x{dest:x} for 0x{count:x} bytes.")
+    if isinstance(addr, int) and isinstance(size, int):
+        logger.info(f"Performing concrete memory load from address 0x{addr:x} for 0x{size:x} bytes.")
     else:
-        logger.warning(f"One or more arguments to memcpy is symbolic, trying symbolic memcpy from address {src} to address {dest} for {count} bytes.")
+        logger.warning(f"One or more arguments to load_memory is symbolic, trying symbolic load from address {addr} for {size} bytes.")
 
-    data = state.memory.load(src, count)
+    data = state.memory.load(addr, size)
+
+    # if not isinstance(size, int):
+    #     state.solver.add(size == data.size() // 8)
+    logger.info(f"Data loaded: {data}")
+    return data
+
+
+def copy_memory(state: angr.SimState, dest, src, count):
+    # In load memory, if the size is symbolic and too large, it will be concretized to some large number
+    # However, this means the store will be done with this concretized size, which can result in false negatives.
+    # To solve this, we first do the breakpoint generation check here for store
+    # The `check_only` flag makes sure no actual store is performed, the store stops after the breakpoint generation
+    # state.memory.store(dest, 0x0, size=count, check_only=True, with_enclave_boundaries=True)
+
+    data = load_memory(state, src, count)
+    if data.size() > 0x10000:
+        logger.warning("Symbolic memory copy detected with large size, this may lead to false negatives.")
+        auto_embed()
     state.memory.store(dest, data, count)
 
 
@@ -449,50 +488,6 @@ class SimHALMemoryCheck(SimProcedure):
         return original_state
 
 
-class SimLaunchNS(SimProcedure):
-    IS_FUNCTION = False
-
-    def run(self, **kwargs):
-        logger.info(f"Hooked launch NS instruction at address 0x{self.state.addr:x}")
-
-        # ============================== Get SG Successors ==============================
-        if not self.state.globals["sau_setup_done"]:
-            # If the state was still in the setup phase, finish it now
-            self.state.globals["sau_setup_done"] = True
-            logger.info("SAU setup finished.")
-
-            # Seal stack
-            self.state.stack_push(0xDEADBEEF)
-            self.state.stack_push(0xFEF5EDA5)
-
-            # And jump to all possible secure entry points in parallel
-            self.add_sg_successors()
-
-    def add_sg_successors(self):
-        tainted_state = self.state.copy()
-        # Initialize all registers as being attacker tainted
-        for reg_name in tainted_state.project.arch.register_names.values():
-            if reg_name in ["pc", "cc_op", "cc_dep1", "itstate", "sp"]:
-                continue
-            size = get_reg_size(tainted_state, reg_name)
-            reg = taint.get_tainted_reg(tainted_state, reg_name, size * 8)
-            set_reg_value(tainted_state, reg_name, reg)
-
-        # Clear the history to make reporting less cluttered
-        tainted_state.history.trim()
-
-        sg_instr_addrs = tainted_state.globals.get("sg_instr_addrs", None)
-
-        if sg_instr_addrs is None:
-            raise ValueError("sg_instr_addrs global variable not set in state during SG successor setup.")
-
-        logger.info(f"Possible sg instructions: {hexify(sg_instr_addrs)}, jumping to all of them in parallel (different states)")
-        for sg_addr in sg_instr_addrs:
-            new_state = tainted_state.copy()
-            new_state.globals["secure"] = False
-            self.successors.add_successor(new_state, sg_addr + 1, claripy.true(), "Ijk_Boring")
-
-
 def setup_sau_hook(state):
     if state.solver.is_true(
         claripy.And(
@@ -504,7 +499,7 @@ def setup_sau_hook(state):
             raise RuntimeError("sau_setup_done not in state.globals during SAU setup hook.")
         elif state.globals["sau_setup_done"]:
             # TODO: fix reporting from the correct plugin. For now, I just use the ptr plugin.
-            Reporter().report("SAU configuration write attempted after initial setup.", state, logger, "ptr", logging.CRITICAL, {})
+            Reporter().report("SAU configuration write attempted after initial setup.", state, logger, "ptr", logging.CRITICAL)
             # logger.critical("SAU configuration write attempted after initial setup.")
             return
         address = state.solver.eval(state.inspect.mem_write_address)
