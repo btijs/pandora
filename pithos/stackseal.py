@@ -51,35 +51,7 @@ class StackSealPlugin(BasePlugin):
 
 
 def check_stack_correctly_sealed(state):
-    xpsr = get_reg_value(state, "cpsr")  # xpsr is called cpsr in angr
-    xpsr = concretize_value_or_none(state, xpsr)
-    if xpsr is None:
-        info = "Could not concretize xPSR, skipping stack sealing check."
-        logger.warning(info)
-        return Reporter().report(info, state, logger, seal_shortname, logging.WARNING)
-
-    sp_to_seal = None
-
-    if (xpsr & 0x1FF) != 0:
-        # If IPSR != 0, we are in handler mode
-        # In handler mode, MSP is used, so PSP should be sealed
-        sp_to_seal = "psp"
-    else:
-        # If IPSR == 0, we are in thread mode
-        # In thread mode, CONTROL[1] determines whether MSP or PSP is used
-        control = get_reg_value(state, "control")
-        control = concretize_value_or_none(state, control)
-        if control is None:
-            info = "Could not concretize CONTROL register, skipping stack sealing check."
-            logger.warning(info)
-            return Reporter().report(info, state, logger, seal_shortname, logging.WARNING)
-
-        if (control & 0b10) == 0:
-            # If CONTROL[1] == 0, MSP is used, so PSP should be sealed
-            sp_to_seal = "psp"
-        else:
-            # If CONTROL[1] == 1, PSP is used, so MSP should be sealed
-            sp_to_seal = "msp"
+    sp_to_seal = get_sp_to_seal(state)
 
     sp_value = get_reg_value(state, sp_to_seal)
     sp_value = concretize_value_or_none(state, sp_value)
@@ -94,6 +66,36 @@ def check_stack_correctly_sealed(state):
         taint_action(state=state, info=info, level=logging.WARNING)
     else:
         logger.info(f"Stack is correctly sealed at {sp_to_seal.upper()} value {hex(sp_value)}")
+
+
+def get_sp_to_seal(state) -> str:
+    xpsr = get_reg_value(state, "cpsr")  # xpsr is called cpsr in angr
+    xpsr = concretize_value_or_none(state, xpsr)
+    if xpsr is None:
+        info = "Could not concretize xPSR, skipping stack sealing check."
+        logger.warning(info)
+        return Reporter().report(info, state, logger, seal_shortname, logging.WARNING)
+
+    if (xpsr & 0x1FF) != 0:
+        # If IPSR != 0, we are in handler mode
+        # In handler mode, MSP is used, so PSP should be sealed
+        return "psp"
+    else:
+        # If IPSR == 0, we are in thread mode
+        # In thread mode, CONTROL[1] determines whether MSP or PSP is used
+        control = get_reg_value(state, "control")
+        control = concretize_value_or_none(state, control)
+        if control is None:
+            info = "Could not concretize CONTROL register, skipping stack sealing check."
+            logger.warning(info)
+            return Reporter().report(info, state, logger, seal_shortname, logging.WARNING)
+
+        if (control & 0b10) == 0:
+            # If CONTROL[1] == 0, MSP is used, so PSP should be sealed
+            return "psp"
+        else:
+            # If CONTROL[1] == 1, PSP is used, so MSP should be sealed
+            return "msp"
 
 
 def is_sealed(state, sp_value):
