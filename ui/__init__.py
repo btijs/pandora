@@ -1,5 +1,6 @@
 # Global console to be reused for all logging. Allows to put a spinner below log messages.
 import datetime
+import logging
 import os
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from rich.console import Console
 from rich.live import Live
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
-console = Console(color_system=None, highlight=False, soft_wrap=True)
+console = Console(soft_wrap=True)
 
 """
 At creation time of Pandora, we once import the whole of angr to get all its loggers and be able to disable them
@@ -24,8 +25,6 @@ p = Progress(
 with Live(p, console=console) as progress:
     task = p.add_task(description="Importing angr (this takes a second)", total=None)
     p.advance(task)
-
-    import logging
 
     p.advance(task)
 

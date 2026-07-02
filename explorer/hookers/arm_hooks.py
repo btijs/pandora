@@ -8,6 +8,7 @@ from claripy import ast
 
 from sdks.SAU_IDAU import ProcessorPrivilegeLevel, ProcessorSecurityState
 from sdks.SDKManager import SDKManager
+from ui import console
 from ui.report import Reporter
 from utilities.angr_helper import attacker_taint_regs, set_reg_value
 from utilities.helper import auto_embed, hexify
@@ -387,9 +388,9 @@ class SimHALMemoryCheck(SimProcedure):
         Returns:
             The merged state for reference
         """
-        print("\n" + "=" * 80)
-        print("STEP 1: Pre-computing tfm_hal_memory_check with symbolic arguments")
-        print("=" * 80)
+        console.print("\n" + "=" * 80)
+        console.print("STEP 1: Pre-computing tfm_hal_memory_check with symbolic arguments")
+        console.print("=" * 80)
 
         # Create a state at the entry of tfm_hal_memory_check
         tfm_hal_addr = state.project.loader.find_symbol("tfm_hal_memory_check").rebased_addr
@@ -401,43 +402,43 @@ class SimHALMemoryCheck(SimProcedure):
         precompute_simgr = state.project.factory.simgr(precompute_state)
 
         # Explore until we hit the return instructions
-        print(f"Exploring function..., {state.regs.lr} is return address")
+        console.print(f"Exploring function..., {state.regs.lr} is return address")
         precompute_simgr.explore(
             find=lambda s: (s.addr == state.regs.lr).is_true(),
             avoid=[],
             num_find=1000,  # Find all possible return states
         )
 
-        print(f"Found {len(precompute_simgr.found)} states after exploration")
+        console.print(f"Found {len(precompute_simgr.found)} states after exploration")
 
         if not precompute_simgr.found:
-            print("ERROR: No states found! Cannot proceed.")
+            console.print("ERROR: No states found! Cannot proceed.")
             auto_embed()
             return None
         elif len(precompute_simgr.errored) > 0:
-            print(f"WARNING: {len(precompute_simgr.errored)} errored states found during exploration. These states will be ignored for merging, but this may indicate issues with the analysis.")
+            console.print(f"WARNING: {len(precompute_simgr.errored)} errored states found during exploration. These states will be ignored for merging, but this may indicate issues with the analysis.")
 
-        # Print information about each state
-        print("\nStates before merging:")
+        # console.Print information about each state
+        console.print("\nStates before merging:")
         for i, s in enumerate(precompute_simgr.found):
             ret_val = s.solver.eval(s.regs.r0) if not s.solver.symbolic(s.regs.r0) else "symbolic"
-            print(f"  State {i + 1:<2}: return = 0x{ret_val:08x}, number of constraints = {len(s.solver.constraints):<2}")
+            console.print(f"  State {i + 1:<2}: return = 0x{ret_val:08x}, number of constraints = {len(s.solver.constraints):<2}")
 
-        print("\n" + "=" * 80)
-        print("STEP 2: Merging all states into one")
-        print("=" * 80)
+        console.print("\n" + "=" * 80)
+        console.print("STEP 2: Merging all states into one")
+        console.print("=" * 80)
 
         # Merge all found states
         merged = self.merge_states_with_symbolic_return(state, precompute_simgr.found, return_reg="r0")
 
         if merged is None:
-            print("ERROR: Failed to merge states!")
+            console.print("ERROR: Failed to merge states!")
             return None
 
-        print(f"Successfully merged {len(precompute_simgr.found)} states into one!")
-        print(f"  Symbolic return value: {merged.regs.r0}")
-        print(f"  Total constraints: {len(merged.solver.constraints)}")
-        print(f"  Possible return values: {merged.solver.eval_upto(merged.regs.r0, 10)}")
+        console.print(f"Successfully merged {len(precompute_simgr.found)} states into one!")
+        console.print(f"  Symbolic return value: {merged.regs.r0}")
+        console.print(f"  Total constraints: {len(merged.solver.constraints)}")
+        console.print(f"  Possible return values: {merged.solver.eval_upto(merged.regs.r0, 10)}")
 
         return merged
 

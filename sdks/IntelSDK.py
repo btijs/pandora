@@ -119,7 +119,7 @@ class IntelSDK(AbstractSGXSDK):
         # TODO: We always seem to have a zero size and a negative offset for our binary. so when is this used? Figure it out...
         if dir.size > 0 and config_offset > 0:
             # TODO: Always skipped for our code so far
-            print(f"offset is {config_offset}, wanted is {dir.offset}, size {dir.size}")
+            ui.console.print(f"offset is {config_offset}, wanted is {dir.offset}, size {dir.size}")
             self.elrange_config = ElrangeConfigEntry.from_buffer_copy(bytearray(self.metadata.data[config_offset : config_offset + dir.size]))
             logger.debug(f"Metadata elrange config: {str(self.elrange_config)}")
         else:

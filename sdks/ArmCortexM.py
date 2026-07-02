@@ -9,6 +9,7 @@ from claripy import UninitializedAnnotation
 from explorer.taint import AttackerTaintConservative
 from sdks.AbstractSDK import AbstractSDK
 from sdks.SAU_IDAU import IDAU, SAU, FullAttributionUnit
+from ui import console
 from utilities.angr_helper import set_reg_value
 
 logger = logging.getLogger(__name__)
@@ -18,11 +19,11 @@ class ArmCortexM(AbstractSDK):
     def __init__(self, elffile, init_state, version_str, idau_json_file=None, **kwargs):
         super().__init__(elffile, init_state, version_str, **kwargs)
 
-        print(f"Elf file: {elffile}")
-        print(f"Init state: {init_state}")
-        print(f"Version string: {version_str}")
-        print(f"IDAU JSON file: {idau_json_file}")
-        print(f"Additional kwargs: {kwargs}")
+        console.print(f"Elf file: {elffile}")
+        console.print(f"Init state: {init_state}")
+        console.print(f"Version string: {version_str}")
+        console.print(f"IDAU JSON file: {idau_json_file}")
+        console.print(f"Additional kwargs: {kwargs}")
 
         if idau_json_file is None:
             raise ValueError("ArmCortexM SDK requires an 'idau-json-file' argument to specify the IDAU layout. Please provide this with the '--idau-json-file' command line argument.")
@@ -38,7 +39,7 @@ class ArmCortexM(AbstractSDK):
         for segment in list(elffile.iter_segments())[1:]:
             seg_addr = segment.header.p_paddr
             seg_data = segment.data()
-            print(f"Loading segment at {hex(seg_addr)} with size {len(seg_data)}")
+            console.print(f"Loading segment at {hex(seg_addr)} with size {len(seg_data)}")
             init_state.memory.store(seg_addr, seg_data, with_enclave_boundaries=False)
 
     @staticmethod

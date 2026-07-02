@@ -97,11 +97,9 @@ class PandoraRichHandler(RichHandler):
             duties except push that message to the console.
         """
         message = self.format(record)
-
-        message_renderable = self.render_message(record, message)
-
+        # message_renderable = self.render_message(record, message)
         try:
-            self.console.print(message_renderable)
+            self.console.print(message, markup=True, highlight=False, soft_wrap=True)
         except Exception:
             self.handleError(record)
 
@@ -130,7 +128,7 @@ def init_logger(config_file, pandora_level, angr_level):
 
     # setup log handler
     formatter = ColorFormatter(fmt, themes)
-    handler = PandoraRichHandler(console=console, markup=False, show_time=False, show_level=False, show_path=False)
+    handler = PandoraRichHandler(console=console, markup=True, show_time=False, show_level=False, show_path=False)
     handler.setLevel(pandora_level.upper())
     handler.setFormatter(formatter)
 
