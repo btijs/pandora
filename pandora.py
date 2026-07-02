@@ -3,6 +3,7 @@
 import atexit
 import json
 import logging
+import os
 import re
 import sys
 from dataclasses import dataclass
@@ -13,6 +14,7 @@ from pathlib import Path
 from typing import List, Optional
 
 import typer
+from rich.console import Group
 from rich.live import Live
 from rich.progress import (
     BarColumn,
@@ -27,6 +29,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 from rich.text import Text
+from rich.traceback import Traceback
 
 import explorer.cfg as cfg
 import pandora_options as po
@@ -71,6 +74,7 @@ class PandoraContext:
     report_level: LogLevel
     angr_log_level: LogLevel
     num_steps: int
+    path_num_steps: int
     plugins: list
     pandora_options: list
     sdk_detection_type: str
@@ -121,6 +125,8 @@ def pandora_setup(pandora_ctx: PandoraContext, binary_path: Path):
         # Set the plugin relevant options in the PandoraOptions Singleton
         for k, v in pandora_ctx.pandora_options:
             po.PandoraOptions().set_option(k, v)
+
+        po.PandoraOptions().ctx = pandora_ctx
 
         """
         SDK Setup
@@ -190,8 +196,13 @@ class StateProgressColumn(ProgressColumn):
 
         stats = f"Statistics: [{fields['active']:4d} active] "
 
-        if po.PandoraOptions().get_option(po.PANDORA_EXPLORE_DEPTH_FIRST) and "deferred" in fields:
-            stats += f"[{fields['deferred']: 4d} deferred] "
+        if po.PandoraOptions().get_option(po.PANDORA_EXPLORE_DEPTH_FIRST):
+            if "current_path_length" in fields:
+                stats = f"Curr path len: {fields['current_path_length']} // " + stats
+            if "deferred" in fields:
+                stats += f"[{fields['deferred']: 4d} deferred] "
+            if "cut" in fields:
+                stats += f"[{fields['cut']: 4d} cut] "
 
         if po.PandoraOptions().get_option(po.PANDORA_EXPLORE_REENTRY_COUNT) > 0 and "uniques" in fields and "new_uniques" in fields:
             stats += f"[{fields['new_uniques']: 4d} new uniques] [{fields['uniques']: 4d} old uniques]"
@@ -218,20 +229,21 @@ def pandora_explore(pandora_ctx: PandoraContext):
     # Prepare an iterator that either counts upward for an unknown step count or that goes over the number of steps.
     if pandora_ctx.num_steps <= 0:
         it = count()
-        console_progress = Progress(SpinnerColumn(finished_text=":white_check_mark:"), TextColumn("[progress.description]{task.description} {task.completed}"), TimeElapsedColumn(), StateProgressColumn())
+        console_progress = Progress(SpinnerColumn(finished_text=":white_check_mark:"), TextColumn("[progress.description]{task.description} {task.completed}"), TimeElapsedColumn())
     else:
         it = iter(range(1, pandora_ctx.num_steps + 1))
-        console_progress = Progress(TextColumn("[progress.description]{task.description} {task.completed}"), BarColumn(), TimeElapsedColumn(), TaskProgressColumn(), TimeRemainingColumn(), StateProgressColumn())
+        console_progress = Progress(TextColumn("[progress.description]{task.description} {task.completed}"), BarColumn(), TimeElapsedColumn(), TaskProgressColumn(), TimeRemainingColumn())
+    state_progress = Progress(StateProgressColumn())
 
     current_step = next(it, None)
     is_done = False
     executed_num_steps = 0
     handled_error_states = 0
     pandora_state["in_execution"] = True
-    with Live(console_progress, console=console):
-        # Only spawn a progress or spinner if we do not have any user action.
-        # This would be annoying to have the spinner there for user actions.
-        task = console_progress.add_task(description="Running symbolic execution at step ", total=None if pandora_ctx.num_steps == 0 else pandora_ctx.num_steps, fields={"active": 1, "eexited": 0})
+
+    with Live(Group(console_progress, state_progress), console=console):
+        task = console_progress.add_task(description="Running symbolic execution at step", total=None if pandora_ctx.num_steps <= 0 else pandora_ctx.num_steps)
+        task2 = state_progress.add_task(description="", fields={"active": 1, "eexited": 0})
 
         # For 'with_cfg' option only: Keep track of unmapped addresses.
         unmapped_dict = {}
@@ -271,26 +283,30 @@ def pandora_explore(pandora_ctx: PandoraContext):
             unhandled_errors = errored_states[handled_error_states:]
             if unhandled_errors:
                 logger.critical(f"Some states errored! Errored states: {unhandled_errors}")
+                # pretty print the errored states with their backtraces
+                for s in unhandled_errors:
+                    width = int(os.environ.get("COLUMNS", 150))
+                    console.print(f"Errored state at address {hex(s.state.addr)}. Traceback:")
+                    console.print(Traceback.from_exception(Exception, Exception(), s.traceback, show_locals=True, width=width, code_width=width), highlight=True)
                 action_mgr.leveled_actions["error"](info="[errored states]", state=unhandled_errors)
                 # Append the unhandled errors to the set of handled errors to ignore them in the next iteration.
                 handled_error_states = len(errored_states)
 
             # Advance the progress bar / spinner
-            console_progress.update(task, fields=my_explorer.get_running_statistics())
             console_progress.advance(task)
+            state_progress.update(task2, fields=my_explorer.get_running_statistics())
 
             # Advance to the next step
             current_step = next(it, None)
 
             # If we terminate without having a num steps limit, update the spinner to be completed.
             if is_done and pandora_ctx.num_steps == 0:
-                console_progress.update(task, completed=executed_num_steps, total=executed_num_steps, fields=my_explorer.get_running_statistics())
+                console_progress.update(task, completed=executed_num_steps, total=executed_num_steps)
+                state_progress.update(task2, fields=my_explorer.get_running_statistics())
 
     """
     Wrap up.
     """
-    my_explorer.wrap_up()  # Run statistics
-
     if errored_states:
         log_always(logger, log_format.format_warning(f"\n\nPandora completed after taking {executed_num_steps} steps but had some errored states."))
         log_always(logger, f"All errored states throughout the run: {log_format.format_fields(errored_states)}")
@@ -410,6 +426,10 @@ def pandora_selftest(pandora_ctx: PandoraContext):
 
 def exit_execution():
     if pandora_state["in_execution"]:
+        # Finish up the explorer to get final statistics and close the reporter to write the report file.
+        my_explorer = explorer.BasicBlockExplorer()
+        my_explorer.wrap_up()
+
         # Get reporter Singleton
         reporter = ui.report.Reporter()
         # First print a statistics table for all plugins
@@ -511,7 +531,7 @@ def plugin_options_callback(ctx: typer.Context, value: List):
         option_val = split_val[1]
         if option_type is bool:
             validate_opt(split_val[1].lower(), ["false", "true"], context=f"'{split_val[0]}' option: ")
-            option_val = True if split_val[1] == "true" else False
+            option_val = True if split_val[1].lower() == "true" else False
         elif option_type is int:
             # Do manual opt checking in this case
             if not split_val[1].isdigit():
@@ -577,13 +597,15 @@ def main_callback(
         help="The log level for angr",
     ),
     num_steps: int = typer.Option(100, "-n", "--num-steps", help="Number of steps to execute in symbolic execution. 0 or negative allows to run to completion.", rich_help_panel="Exploration options"),
+    path_num_steps: int = typer.Option(0, "--path-num-steps", help="Number of steps to execute a single path in DFS. 0 or negative disables DFS path length limiting", rich_help_panel="Exploration options"),
     plugins: str = typer.Option(
         "default",
         "-p",
         "--plugins",
         callback=plugin_callback,
         metavar="[" + "|".join(PluginManager.get_special_plugins().keys()) + "|" + "|".join(PluginManager.get_plugin_names()) + "]",
-        help="Define the plugins to activate, separated by a comma. " + format_help_options("plugin", PluginManager.get_plugin_help()),
+        help="Define the plugins to activate, separated by a comma. ",  # + format_help_options("plugin", PluginManager.get_plugin_help()),
+        autocompletion=PluginManager.get_plugin_names,
         rich_help_panel="Exploration options",
     ),
     pandora_options: Optional[List[str]] = typer.Option(
@@ -699,12 +721,13 @@ COMMAND_REPORT_HELP = "Generate a report for a given exploration log file."
 COMMAND_RUN_HELP = f"Shorthand for {log_format.format_inline_header('explore')} + {log_format.format_inline_header('report')}"
 COMMAND_CFG_HELP = "EXPERIMENTAL: Create a control flow graph of this binary into the default log folder."
 COMMAND_SELFTEST_HELP = "Performs a normal binary load (as for explore/run) but then performs a series of selftests."
-app = typer.Typer(add_completion=False, rich_markup_mode="rich", no_args_is_help=True)
+app = typer.Typer(add_completion=False, rich_markup_mode="rich", no_args_is_help=True, pretty_exceptions_show_locals=True)
 app.command(name="explore", help=COMMAND_EXPLORE_HELP)(main_callback)
 app.command(name="report", help=COMMAND_REPORT_HELP)(main_callback)
 app.command(name="run", help=COMMAND_RUN_HELP)(main_callback)
 app.command(name="cfg", help=COMMAND_CFG_HELP)(main_callback)
 app.command(name="selftest", help=COMMAND_SELFTEST_HELP)(main_callback)
+
 
 if __name__ == "__main__":
     app()

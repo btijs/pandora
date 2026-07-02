@@ -1,4 +1,11 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from utilities.Singleton import Singleton
+
+if TYPE_CHECKING:
+    from pandora import PandoraContext
 
 # Global variable in Pandora to be able to stop execution from anywhere without needing dependencies
 PANDORA_USER_REQUESTED_EXIT = False
@@ -40,6 +47,14 @@ PANDORA_REPORT_ONLY_UNIQUE_DEFAULT = False
 PANDORA_REPORT_OMIT_ATTACKER_CONSTRAINTS = "PANDORA_REPORT_OMIT_ATTACKER_CONSTRAINTS"
 PANDORA_REPORT_OMIT_ATTACKER_CONSTRAINTS_DEFAULT = False
 
+# Option to limit memory usage by setting minimum free memory before Pandora stops execution (in GB)
+PANDORA_EXPLORE_MIN_FREE_MEMORY = "PANDORA_EXPLORE_MIN_FREE_MEMORY"
+PANDORA_EXPLORE_MIN_FREE_MEMORY_DEFAULT = 3
+
+# Option to try to minimize memory usage by aggressively removing finished states. This wont remove states that are still active, but it will remove states that have finished execution, which means you can't inspect them at the end of the run
+PANDORA_EXPLORE_AGGRESSIVE_STATE_REMOVAL = "PANDORA_EXPLORE_AGGRESSIVE_STATE_REMOVAL"
+PANDORA_EXPLORE_AGGRESSIVE_STATE_REMOVAL_DEFAULT = False
+
 DEFAULT_PANDORA_OPTIONS = {
     PANDORA_ENCLAVE_MIXIN_ENABLE: True,
     PANDORA_EXPLORE_THREAD_COUNT: PANDORA_EXPLORE_THREADING_COUNT_DEFAULT,
@@ -51,6 +66,8 @@ DEFAULT_PANDORA_OPTIONS = {
     PANDORA_EXPLORE_STACK_DEPTH: PANDORA_EXPLORE_STACK_DEPTH_DEFAULT,
     PANDORA_REPORT_ONLY_UNIQUE: PANDORA_REPORT_ONLY_UNIQUE_DEFAULT,
     PANDORA_REPORT_OMIT_ATTACKER_CONSTRAINTS: PANDORA_REPORT_OMIT_ATTACKER_CONSTRAINTS_DEFAULT,
+    PANDORA_EXPLORE_MIN_FREE_MEMORY: PANDORA_EXPLORE_MIN_FREE_MEMORY_DEFAULT,
+    PANDORA_EXPLORE_AGGRESSIVE_STATE_REMOVAL: PANDORA_EXPLORE_AGGRESSIVE_STATE_REMOVAL_DEFAULT,
 }
 
 
@@ -66,7 +83,7 @@ class PandoraOptions(metaclass=Singleton):
     """
 
     options = {}
-    ctx = None
+    ctx: PandoraContext | None = None
     # Add all globals as long as they start with PANDORA_
     all_options = list(DEFAULT_PANDORA_OPTIONS.keys())
 

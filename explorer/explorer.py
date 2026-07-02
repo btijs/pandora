@@ -2,7 +2,7 @@ import logging
 import sys
 
 import angr
-from angr.exploration_techniques import ManualMergepoint, MemoryWatcher
+from angr.exploration_techniques import MemoryWatcher
 
 import pandora_options as po
 import ui.log_format as log_format
@@ -20,6 +20,7 @@ from .memory.EnclaveAwareMemory import EnclaveAwareMemory
 from .techniques.ControlFlow import ControlFlowTracker
 from .techniques.EnclaveReentry import EnclaveReentry
 from .techniques.ExplorationStatistics import ExplorationStatistics
+from .techniques.LengthLimiter import LengthLimiter
 from .techniques.PandoraDFS import PandoraDFS
 from .techniques.PandoraLoopSeer import PandoraLoopSeer
 from .techniques.TraceLogger import TraceLogger
@@ -64,8 +65,8 @@ class AbstractExplorer(metaclass=Singleton):
         if selfmodifying_code:
             logger.warning("Pandora/angr support for selfmodifying code is experimental, expect issues (e.g., UD2 is incorrectly skipped over)!")
         self.proj = angr.Project(binary_path, main_opts=angr_main_opts, engine=PandoraEngine, selfmodifying_code=selfmodifying_code)
-        self.initial_state = None
-        self.simgr = None
+        self.initial_state: angr.SimState | None = None
+        self.simgr: angr.SimulationManager | None = None
         logger.debug("Angr project created and Explorer initialized.")
 
     def get_init_state(self):
@@ -129,14 +130,52 @@ class AbstractExplorer(metaclass=Singleton):
             "active": len(self.simgr.active),
         }
 
-        if po.PandoraOptions().get_option(po.PANDORA_EXPLORE_DEPTH_FIRST):
-            stats["deferred"] = len(self.simgr.stashes["deferred"])
+        if po.PandoraOptions().get_option(po.PANDORA_EXPLORE_AGGRESSIVE_STATE_REMOVAL):
+            # Remove deadened and unsat
+            self.simgr.stashes["deadened"] = []
+            self.simgr.stashes["unsat"] = []
 
-        if po.PandoraOptions().get_option(po.PANDORA_EXPLORE_REENTRY_COUNT) > 0:
-            stats["new_uniques"] = len(self.simgr.stashes["new_uniques"])
-            stats["uniques"] = len(self.simgr.stashes["uniques"])
+            if po.PandoraOptions().get_option(po.PANDORA_EXPLORE_DEPTH_FIRST):
+                self.cut_count = getattr(self, "cut_count", 0) + len(self.simgr.stashes["cut"])
+
+                # Remove deferred and cut states to save memory.
+                self.simgr.stashes["enclave_fault"] = []
+                self.simgr.stashes["protections_disabled"] = []
+                self.simgr.stashes["cut"] = []
+
+                stats["deferred"] = len(self.simgr.stashes["deferred"])
+                stats["cut"] = self.cut_count
+                stats["current_path_length"] = self.simgr.active[0].history.block_count if len(self.simgr.active) > 0 else 0
+
+            if po.PandoraOptions().get_option(po.PANDORA_EXPLORE_REENTRY_COUNT) > 0:
+                self.new_uniques_count = getattr(self, "new_uniques_count", 0) + len(self.simgr.stashes["new_uniques"])
+                self.uniques_count = getattr(self, "uniques_count", 0) + len(self.simgr.stashes["uniques"])
+
+                # Remove unique states to save memory
+                self.simgr.stashes["new_uniques"] = []
+                self.simgr.stashes["uniques"] = []
+
+                stats["new_uniques"] = self.new_uniques_count
+                stats["uniques"] = self.uniques_count
+            else:
+                self.eexited_count = getattr(self, "eexited_count", 0) + len(self.simgr.stashes["eexited"])
+
+                # Remove eexited states to save memory
+                self.simgr.stashes["eexited"] = []
+
+                stats["eexited"] = self.eexited_count
+
         else:
-            stats["eexited"] = len(self.simgr.eexited)
+            if po.PandoraOptions().get_option(po.PANDORA_EXPLORE_DEPTH_FIRST):
+                stats["deferred"] = len(self.simgr.stashes["deferred"])
+                stats["cut"] = len(self.simgr.stashes["cut"])
+                stats["current_path_length"] = self.simgr.active[0].history.depth if len(self.simgr.active) > 0 else 0
+
+            if po.PandoraOptions().get_option(po.PANDORA_EXPLORE_REENTRY_COUNT) > 0:
+                stats["new_uniques"] = len(self.simgr.stashes["new_uniques"])
+                stats["uniques"] = len(self.simgr.stashes["uniques"])
+            else:
+                stats["eexited"] = len(self.simgr.eexited)
 
         return stats
 
@@ -144,9 +183,8 @@ class AbstractExplorer(metaclass=Singleton):
         if not self.simgr:
             return "Stashes empty."
         else:
-            stash_state = ", ".join([f"{k} ({len(self.simgr.stashes.get(k))})" for k in filter(lambda k: k != "errored", self.simgr.stashes.keys())])
-            stash_state += f" errored ({len(self.simgr.errored)})"
-            return stash_state
+            full_stashes = {**{k: len(v) for k, v in self.simgr.stashes.items()}, **{k: v for k, v in self.get_running_statistics().items() if k in self.simgr.stashes}}
+            return ", ".join([f"{k} ({s})" for k, s in full_stashes.items()])
 
     def get_cfg_data(self):
         # Update cfg data
@@ -189,12 +227,17 @@ class BasicBlockExplorer(AbstractExplorer):
             # - Breakpoints for plugins have to be reapplied after loading states again (inspect.b are lost)
             # self.simgr.use_technique(Spiller(min=1, max=1, staging_max=1, vault=VaultDirShelf(d='./tmp')))
             if pandora_options[po.PANDORA_EXPLORE_DEPTH_FIRST]:
+                ctx = po.PandoraOptions().ctx
+                assert ctx is not None, "Pandora context is not set in PandoraOptions"
+                if ctx.path_num_steps > 0:
+                    self.simgr.use_technique(LengthLimiter(max_length=ctx.path_num_steps, drop=False))
+
                 self.simgr.use_technique(PandoraDFS())
 
             if pandora_options[po.PANDORA_EXPLORE_USE_LOOP_SEER]:
                 self.simgr.use_technique(PandoraLoopSeer(bound=pandora_options[po.PANDORA_EXPLORE_LOOP_SEER_BOUND]))
 
-            self.simgr.use_technique(MemoryWatcher(min_memory=1024 * 3))  # 3GB free
+            self.simgr.use_technique(MemoryWatcher(min_memory=1024 * pandora_options[po.PANDORA_EXPLORE_MIN_FREE_MEMORY]))
 
             # For tfm
             tfm_hal_memory_check_symbol = self.proj.loader.find_symbol("tfm_hal_memory_check")
@@ -214,9 +257,7 @@ class BasicBlockExplorer(AbstractExplorer):
                     merge_addrs = [start_addr + 0x42]
 
                 if merge_addrs:
-                    for addr in merge_addrs:
-                        self.simgr.use_technique(ManualMergepoint(addr, wait_counter=10))
-                    # self.simgr.use_technique(ManualMerger(start_addr, merge_addrs, wait_counter=10))
+                    self.simgr.use_technique(ManualMerger(start_addr, merge_addrs, wait_counter=10))
 
             # To log basic blocks when logging is set to TRACE, we use the TraceLogger
             self.simgr.use_technique(TraceLogger())
@@ -241,6 +282,9 @@ class BasicBlockExplorer(AbstractExplorer):
     def make_step(self):
         if not self.simgr:
             self._init_simgr()
+            self.steps = 0
+        else:
+            self.steps += 1
 
         # Perform the step action if requested by the user
         self.action(state=self.simgr.active, info="[simgr.step]")
