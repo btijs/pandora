@@ -33,7 +33,7 @@ class ArmCortexM(AbstractSDK):
         self.au = FullAttributionUnit(self.idau, self.sau)
         self.init_state.register_plugin("full_attribution_unit", self.au)
 
-        self.tfm_func_num = kwargs.get("tfm_func_num", -1)
+        self.tfm_func_num: int = kwargs.get("tfm_func_num", -1)
 
         # Setup ELF segments (skip first segment)
         for segment in list(elffile.iter_segments())[1:]:
@@ -64,18 +64,25 @@ class ArmCortexM(AbstractSDK):
         return "ARMCortexM"
 
     def get_safe_registers(self) -> list[str]:
-        return super().get_safe_registers() + ["control", "cpsr", "cc_op", "cc_dep1", "itstate", "msp", "msp_s", "psp", "psp_s", "sp", "primask"]
+        # Banked and pseudo registers
+        return super().get_safe_registers() + ["control", "cc_op", "itstate", "msp", "msp_s", "psp", "psp_s", "sp", "primask"]
 
     def init_eenter_state(self, eenter_state):
+        pass
+
+    def modify_init_state(self, init_state):
         # Setup initial PC
-        set_reg_value(eenter_state, "pc", self.get_entry_addr())
+        set_reg_value(init_state, "pc", self.get_entry_addr())
 
         # set_reg_value(eenter_state, "control", 0b10)  # Use PSP and unprivileged mode
 
-        eenter_state.globals["secure"] = True
+        # set_reg_value(eenter_state, "sp", 0x30012000)
 
-        self.setup_sau(eenter_state)
-        self.setup_banked_register_hooks(eenter_state)
+        init_state.globals["secure"] = True
+        init_state.globals["secure_init_finished"] = False
+
+        self.setup_sau(init_state)
+        self.setup_banked_register_hooks(init_state)
 
         # Load flash contents
         for addr, file in [(0x0C00E000, "flash.bin")]:
@@ -85,15 +92,12 @@ class ArmCortexM(AbstractSDK):
                 if os.path.exists(flash_path):
                     with open(flash_path, "rb") as f:
                         content = f.read()
-                        eenter_state.memory.store(addr, content)
+                        init_state.memory.store(addr, content)
                         logger.info(f"Loaded {file} content to {hex(addr)} from {flash_path}")
                 else:
                     logger.warning(f"{file} not found at {flash_path}")
             except Exception as e:
                 logger.error(f"Failed to load {file}: {e}")
-
-    def modify_init_state(self, init_state):
-        pass
 
     def modify_reentry_state(self, reentry_state):
         logger.info(f"Modifying reentry state for ArmCortexM SDK... at address {hex(reentry_state.addr)}")
@@ -256,6 +260,11 @@ class ArmCortexM(AbstractSDK):
 
             states.append(state)
         return states
+
+    def get_reentry_fanout(self, state):
+        from explorer.hookers.arm_hooks import nsc_fan_out  # import here to avoid circular imports
+
+        return nsc_fan_out(state)
 
     def get_max_inst_size(self):
         # Maximum instruction size for ARMv8-M is 4 bytes

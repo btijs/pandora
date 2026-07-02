@@ -84,6 +84,15 @@ class AbstractSDK:
         """
         return []
 
+    def get_reentry_fanout(self, state):
+        """
+        Called by EnclaveReentry after eenter() on a reentry state. Lets SDKs with multiple
+        entry points (e.g. ARM Cortex-M NSC functions) fan the single reentered state out
+        into one state per possible entry point.
+        Default: single entry point, no fan-out.
+        """
+        return [state]
+
     def is_eexit_target(self, addr):
         """
         Optionally check that a jump to a given addr exits the enclave. Some TEEs (eg Sancus) allow to jump

@@ -70,6 +70,10 @@ class SimSG(SimProcedure):
             # Bit 0 of lr must be set to 0
             self.state.regs.lr = self.state.regs.lr & ~1
 
+            self.state.history.previous_block_count = 0  # Reset block count to start path length measurement from the SG instruction, which is the actual secure entry point
+            self.state.history.recent_block_count = 0  # Reset block count to start path length measurement from the SG instruction, which is the actual secure entry point
+            self.state.globals["secure_init_finished"] = True
+
             self.state.globals["secure"] = True
             logger.info("State switched to secure mode.")
         else:
@@ -96,6 +100,37 @@ class SimSG(SimProcedure):
             self.state.regs.r1 = self.state.regs.r1 & 0x00FFFFFF | ((in_len & 0xFF) << 24)
         if out_len is not None:
             self.state.regs.r1 = self.state.regs.r1 & 0xFF00FFFF | ((out_len & 0xFF) << 16)
+
+
+def nsc_fan_out(state):
+    """
+    Forks `state` into one new state per Non-Secure-Callable (NSC/SG) entry point, tainted
+    and ready to resume execution from that entry point. Returns the list of new states
+    (each with `.ip` already set to its NSC entry address); does not add them as angr
+    successors, so callers outside of a SimProcedure's successor-adding context can reuse
+    this too (e.g. to re-fan-out an enclave reentry state).
+    """
+    tainted_state = state.copy()
+
+    attacker_taint_regs(tainted_state, SDKManager().get_safe_registers() + ["pc", "sp", "msp", "psp", "msplim", "psplim"])
+
+    # Clear the history to make reporting less cluttered
+    tainted_state.history.trim()
+
+    sg_instr_addrs = tainted_state.globals.get("sg_instr_addrs", None)
+
+    if sg_instr_addrs is None:
+        raise ValueError("sg_instr_addrs global variable not set in state during SG successor setup.")
+
+    logger.info(f"Possible sg instructions: {hexify(sg_instr_addrs)}, jumping to all of them in parallel (different states)")
+    new_states = []
+    for sg_addr in sg_instr_addrs:
+        new_state = tainted_state.copy()
+        new_state.globals["secure"] = False
+        new_state.globals["just_entered_secure"] = True
+        new_state.ip = sg_addr + 1
+        new_states.extend(SDKManager().modify_reentry_state(new_state))
+    return new_states
 
 
 class SimBXNS(SimProcedure):
@@ -129,29 +164,8 @@ class SimBXNS(SimProcedure):
             self.handle_secure_jump(jmp_addr, l_flag)
 
     def add_sg_successors(self):
-        tainted_state = self.state.copy()
-
-        attacker_taint_regs(tainted_state, SDKManager().get_safe_registers() + ["pc", "sp", "msp", "psp", "msplim", "psplim"])
-
-        # Clear the history to make reporting less cluttered
-        tainted_state.history.trim()
-
-        sg_instr_addrs = tainted_state.globals.get("sg_instr_addrs", None)
-
-        if sg_instr_addrs is None:
-            raise ValueError("sg_instr_addrs global variable not set in state during SG successor setup.")
-
-        logger.info(f"Possible sg instructions: {hexify(sg_instr_addrs)}, jumping to all of them in parallel (different states)")
-        for sg_addr in sg_instr_addrs[-1:]:
-            new_state = tainted_state.copy()
-            new_state.globals["secure"] = False
-            # self.successors.add_successor(new_state, sg_addr + 1, claripy.true(), "Ijk_Boring")
-            # continue
-            new_state.globals["just_entered_secure"] = True
-            new_state.ip = sg_addr + 1
-            states = SDKManager().modify_reentry_state(new_state)
-            for s in states:
-                self.successors.add_successor(s, s.ip, claripy.true(), "Ijk_Boring")
+        for s in nsc_fan_out(self.state):
+            self.successors.add_successor(s, s.ip, claripy.true(), "Ijk_Boring")
 
     def handle_secure_jump(self, jmp_addr, l_flag: bool):
         logger.info(f"Handling secure jump to address {jmp_addr} with lsb == 1.")

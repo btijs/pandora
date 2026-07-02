@@ -4,6 +4,7 @@ import angr
 from angr import ExplorationTechnique
 
 from explorer.enclave import eenter
+from sdks.SDKManager import SDKManager
 from ui.action import UserActionWithLevel
 from ui.log_format import log_always
 
@@ -73,13 +74,18 @@ class EnclaveReentry(ExplorationTechnique):
             self.performed_reentries += 1
             log_always(logger, "--- Exhausted all my states. Restarting all new unique states...")
 
+            reentered_states = []
             for state in simgr.stashes["new_uniques"]:
                 eenter(state)
+                # SDK-specific fan-out (no-op for single-entry-point SDKs like SGX;
+                # re-enters all NSC functions in parallel for ARM Cortex-M)
+                reentered_states.extend(SDKManager().get_reentry_fanout(state))
 
             # restart all new unique states (the ones that we did not restart)
-            simgr.move(from_stash="new_uniques", to_stash="active")
+            simgr.drop(stash="new_uniques")
+            simgr.populate("active", reentered_states)
             # And copy all new uniques to the uniques stash
-            simgr.populate("uniques", simgr.stashes["active"])
+            simgr.populate("uniques", reentered_states)
 
             # new_uniques = get_unique_states(simgr.stashes['eexited'], self.initial_state, existing_uniques=simgr.stashes['uniques'])
             # logger.debug(f'Found {len(new_uniques)} unique states.')
