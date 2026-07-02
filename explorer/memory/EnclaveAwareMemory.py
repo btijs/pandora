@@ -63,4 +63,6 @@ class EnclaveAwareMemory(
     # PagedMemoryMixin does not return a context and is the last mixin to execute
     PagedMemoryMixin,
 ):
-    pass
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._max_symbolic_size = 0x10000

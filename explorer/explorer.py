@@ -96,6 +96,11 @@ class AbstractExplorer(metaclass=Singleton):
                 self.initial_state.options.register_option(k, {type(v)}, default=v)
                 logger.debug(f"PandoraOptions: Registering {k} (type {type(v)}, value {str(v)}) with initial state.")
 
+            self.initial_state.options.add(angr.options.SIMPLIFY_MEMORY_READS)
+            self.initial_state.options.add(angr.options.SIMPLIFY_MEMORY_WRITES)
+            self.initial_state.options.add(angr.options.SIMPLIFY_EXPRS)
+            self.initial_state.options.add(angr.options.SIMPLIFY_CONSTRAINTS)
+
             logger.info(f"Pandora Options on start:\n{ui.log_format.format_fields(po.PandoraOptions().get_options_dict(), normal_format=True)}")
 
             # Optionally increase Python's recursion limit for exploring loops with symbolic upper bound

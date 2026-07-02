@@ -4,7 +4,8 @@ from angr import SIM_PROCEDURES
 from capstone import CS_ARCH_ARM, CS_MODE_THUMB, CS_MODE_V8, Cs
 
 from explorer.hookers.abstract_hooker import AbstractHooker
-from explorer.hookers.arm_hooks import SimBKPT, SimBXNS, SimCopyFlashRegion, SimMemCpy, SimMemSet, SimSG, SimSkipFunction, SimSVC, SimTestTarget
+from explorer.hookers.arm_hooks import SimBKPT, SimBXNS, SimCopyFlashRegion, SimMemCpy, SimSG, SimSkipFunction, SimSVC, SimTestTarget
+from explorer.hookers.general_hooks import SimNop
 
 logger = logging.getLogger(__name__)
 
@@ -60,10 +61,15 @@ class Armv8MHooker(AbstractHooker):
                 hook = SimSVC(bytes_to_skip=instr.size, opstr=instr.op_str, svc_num=instr.operands[0].value.imm)
                 self.project.hook(hook_addr, hook, length=instr.size)
 
+            elif instr.mnemonic in ["cpsid", "cpsie"]:
+                logger.info(f"Found {instr.mnemonic.upper()} instruction at address 0x{hook_addr:x}. Hooking now...")
+                hook = SimNop(bytes_to_skip=instr.size, mnemonic=instr.mnemonic, opstr=instr.op_str)
+                self.project.hook(hook_addr, hook, length=instr.size)
+
         self.init_state.globals["sg_instr_addrs"] = sg_instr_addrs
 
     def hook_symbols(self):
-        self.project.hook_symbol("memset", SimMemSet())
+        self.project.hook_symbol("memset", SIM_PROCEDURES["libc"]["memset"]())
         self.project.hook_symbol("memcpy", SimMemCpy())
         self.project.hook_symbol("memcpy_flash", SimMemCpy())
         self.project.hook_symbol("memcmp", SIM_PROCEDURES["libc"]["memcmp"]())
@@ -81,6 +87,6 @@ class Armv8MHooker(AbstractHooker):
 
         self.project.analyses.CFGFast()
         for addr, func in self.project.kb.functions.items():
-            if "WaitOnFlag" in func.name or "WaitFor" in func.name or func.name in ["Flash_EraseSector"]:
+            if "WaitOnFlag" in func.name or "WaitFor" in func.name or func.name in ["Flash_EraseSector", "RESET_PeripheralReset"]:
                 logger.info(f"Hooking {func} at address 0x{addr:x}...")
                 self.project.hook_symbol(addr, SimSkipFunction(function=func))

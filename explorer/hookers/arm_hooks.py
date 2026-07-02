@@ -255,14 +255,11 @@ class SimMemSet(SimProcedure):
             dest = self.state.solver.eval_one(dest)
         except (angr.errors.SimUnsatError, angr.errors.SimValueError):
             pass
-        try:
-            val = self.state.solver.eval_one(val)
-        except (angr.errors.SimUnsatError, angr.errors.SimValueError):
-            val = 0xAA  # TODO: make this symbolic
+
         try:
             count = self.state.solver.eval_one(count)
         except (angr.errors.SimUnsatError, angr.errors.SimValueError):
-            pass
+            count = self.state.solver.max_int(count)
 
         if isinstance(dest, int) and isinstance(val, int) and isinstance(count, int):
             logger.info(f"Performing concrete memset to address 0x{dest:x} with value 0x{val:x} for 0x{count:x} bytes.")
@@ -272,33 +269,16 @@ class SimMemSet(SimProcedure):
         if isinstance(count, int) and count == 0:
             logger.info("Count is 0, skipping memset.")
         else:
-            self.state.memory.store(dest, val, count)
+            data = claripy.Concat(*([val] * count))
+            self.state.memory.store(dest, data, max_size=count)
 
         # Return dest as per memset specification
         self.ret(dest)
 
 
 def load_memory(state: angr.SimState, addr, size):
-    # Get concrete values if possible
-    # Try all regs separately
-    try:
-        addr = state.solver.eval_one(addr)
-    except (angr.errors.SimUnsatError, angr.errors.SimValueError):
-        pass
-    try:
-        size = state.solver.eval_one(size)
-    except (angr.errors.SimUnsatError, angr.errors.SimValueError):
-        pass
-
-    if isinstance(addr, int) and isinstance(size, int):
-        logger.info(f"Performing concrete memory load from address 0x{addr:x} for 0x{size:x} bytes.")
-    else:
-        logger.warning(f"One or more arguments to load_memory is symbolic, trying symbolic load from address {addr} for {size} bytes.")
-
     data = state.memory.load(addr, size)
 
-    # if not isinstance(size, int):
-    #     state.solver.add(size == data.size() // 8)
     logger.info(f"Data loaded: {data}")
     return data
 
@@ -313,7 +293,7 @@ def copy_memory(state: angr.SimState, dest, src, count):
     data = load_memory(state, src, count)
     if data.size() > 0x10000:
         logger.warning("Symbolic memory copy detected with large size, this may lead to false negatives.")
-        auto_embed()
+        # auto_embed()
     state.memory.store(dest, data, count)
 
 
