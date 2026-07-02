@@ -22,6 +22,7 @@ def eenter(eenter_state):
     # Start the setup by marking the state global as not active. This should disable all breakpoints like tainting
     eenter_state.globals["pandora_active"] = False
 
+    # Initialize all registers as being attacker tainted
     attacker_taint_regs(eenter_state, SDKManager().get_safe_registers())
 
     # After tainting all registers, fill registers that are overwritten by EENTER

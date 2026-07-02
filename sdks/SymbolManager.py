@@ -193,7 +193,7 @@ class SymbolManager(metaclass=Singleton):
         returns "0xdeadbeef <closest_symbol+0xoffset>"
         """
         sym_name, offset = self._get_addr_offset(addr)
-        offset_str = f"+{offset:#x}" if offset != 0 else ""
+        offset_str = f"+{offset:#x}" if offset else ""
         return f"{addr:#x} <{sym_name}{offset_str}>"
 
     def get_rebased_addr(self, addr):
