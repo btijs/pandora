@@ -2,7 +2,7 @@ import logging
 import sys
 
 import angr
-from angr.exploration_techniques import MemoryWatcher
+from angr.exploration_techniques import ManualMergepoint, MemoryWatcher
 
 import pandora_options as po
 import ui.log_format as log_format
@@ -197,13 +197,21 @@ class BasicBlockExplorer(AbstractExplorer):
             if tfm_hal_memory_check_symbol is not None:
                 start_addr = tfm_hal_memory_check_symbol.rebased_addr
                 merge_addr = start_addr + 12
-                self.simgr.use_technique(ManualMerger(start_addr, merge_addr, wait_counter=10))
+                self.simgr.use_technique(ManualMerger(start_addr, [merge_addr], wait_counter=10))
 
             # For riot-tee
             elif cmse_check_address_range_symbol is not None:
                 start_addr = cmse_check_address_range_symbol.rebased_addr
-                merge_addr = start_addr + 58
-                self.simgr.use_technique(ManualMerger(start_addr, merge_addr, wait_counter=10))
+                merge_addrs = []
+                if self.proj.loader.find_symbol("tee_secure_entry"):
+                    merge_addrs = [start_addr + 58, start_addr + 0xD6]
+                elif self.proj.loader.find_symbol("ioctl"):
+                    merge_addrs = [start_addr + 0x42]
+
+                if merge_addrs:
+                    for addr in merge_addrs:
+                        self.simgr.use_technique(ManualMergepoint(addr, wait_counter=10))
+                    # self.simgr.use_technique(ManualMerger(start_addr, merge_addrs, wait_counter=10))
 
             # To log basic blocks when logging is set to TRACE, we use the TraceLogger
             self.simgr.use_technique(TraceLogger())

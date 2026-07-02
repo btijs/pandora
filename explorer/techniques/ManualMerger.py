@@ -11,24 +11,15 @@ logger = logging.getLogger(name=__name__)
 
 
 class ManualMerger(ExplorationTechnique):
-    def __init__(self, start_addr, merge_addr, wait_counter=10, prune=True):
+    def __init__(self, start_addr, merge_addrs, wait_counter=10, prune=True):
         super().__init__()
         self.start_address = start_addr
-        self.merge_address = merge_addr
+        self.merge_addresses = merge_addrs
         self.wait_counter_limit = wait_counter
         self.prune = prune
         self.stashes: dict[str, int] = {}  # stash name -> wait counter
-        self.filter_marker = f"skip_next_filter_{self.merge_address:#x}"
 
-        logger.info(f"Initialized ManualMerger with start_addr={self.start_address:#x}, merge_addr={self.merge_address:#x}, wait_counter={self.wait_counter_limit}, prune={self.prune}")
-
-    def mark_nofilter(self, simgr, stash):
-        for state in simgr.stashes[stash]:
-            state.globals[self.filter_marker] = True
-
-    def mark_okfilter(self, simgr, stash):
-        for state in simgr.stashes[stash]:
-            state.globals.pop(self.filter_marker)
+        logger.info(f"Initialized ManualMerger with start_addr={self.start_address:#x}, merge_addrs={[hex(addr) for addr in self.merge_addresses]}, wait_counter={self.wait_counter_limit}, prune={self.prune}")
 
     def step(self, simgr, stash="active", **kwargs):
         for src_stash in self.stashes.keys():
@@ -38,13 +29,19 @@ class ManualMerger(ExplorationTechnique):
 
         # perform all our analysis as a post-mortem on a given step
         stop_points = kwargs.pop("extra_stop_points", set())
-        stop_points.add(self.merge_address)
+        for addr in self.merge_addresses:
+            stop_points.add(addr)
         simgr = simgr.step(stash=stash, extra_stop_points=stop_points, **kwargs)
+
+        # mark states in the merge range as "sticky" to prevent them from being deferred by other techniques (e.g. DFS)
+        for state in simgr.stashes[stash]:
+            if state.addr == self.start_address:
+                state.globals["sticky"] = True
 
         # do filtering
         new_stash = []
         for state in simgr.stashes[stash]:
-            if self.filter_marker not in state.globals and state.addr == self.merge_address:
+            if state.addr in self.merge_addresses:
                 # Group states by return address and call history
                 return_addr = state.callstack.ret_addr
 
@@ -53,7 +50,7 @@ class ManualMerger(ExplorationTechnique):
                 last_index = next((i for i, addr in enumerate(reversed(history_addrs)) if addr == self.start_address), 0)
                 history_hash = hash(tuple(history_addrs)[: -last_index - 1])
 
-                stash_name = f"manualmerge_waiting_{self.merge_address:#x}_ret_{return_addr:#x}_history_{history_hash:x}"
+                stash_name = f"manualmerge_waiting_ret_{return_addr:#x}_history_{history_hash:x}"
 
                 self.stashes[stash_name] = 0
                 simgr.stashes[stash_name].append(state)
@@ -69,25 +66,29 @@ class ManualMerger(ExplorationTechnique):
             # tick the counter
             self.stashes[src_stash] += 1
 
-            # see if it's time to merge (out of active or hit the wait limit)
+            # see if it's time to merge (out of active or hit wait limit)
             if len(simgr.stashes[stash]) != 0 and self.stashes[src_stash] < self.wait_counter_limit:
                 continue
 
             # only both merging if, you know, there's actually states to merge
             if len(simgr.stashes[src_stash]) == 1:
+                for state in simgr.stashes[src_stash]:
+                    state.globals["sticky"] = False
                 simgr.move(src_stash, stash)
                 continue
 
             # Merge states and add to active stash
             grouped_states = self.group_states_by_return_value(simgr.stashes[src_stash])
 
-            logger.info(f"Merging {len(simgr.stashes[src_stash])} states at {self.merge_address:#x} with return values {[state.regs.r0 for state in simgr.stashes[src_stash]]}")
+            logger.info(f"Merging {len(simgr.stashes[src_stash])} states with return values {[state.regs.r0 for state in simgr.stashes[src_stash]]}")
             logger.info(f"Resulting groups: { {ret_val: len(states) for ret_val, states in grouped_states.items()} }")
             logger.debug(f"All stashes before merging: { {s: len(simgr.stashes[s]) for s in simgr.stashes} }")
 
             for states in grouped_states.values():
                 merged_state = self.merge_states_with_same_return(states)
                 if merged_state is not None:
+                    # Clear "sticky" flag to allow other techniques to work with the merged state
+                    merged_state.globals["sticky"] = False
                     simgr.stashes[stash].append(merged_state)
 
             # Clear the waiting stash
@@ -118,7 +119,7 @@ class ManualMerger(ExplorationTechnique):
 
             # Try to get concrete return value
             if state.solver.symbolic(ret_val):
-                logger.warning(f"State has symbolic return value: {ret_val}")
+                logger.info(f"State has symbolic return value: {ret_val}")
             else:
                 ret_val = state.solver.eval(ret_val)
 

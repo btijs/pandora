@@ -24,11 +24,15 @@ class PandoraDFS(ExplorationTechnique):
     def step(self, simgr, stash="active", **kwargs):
         simgr = simgr.step(stash=stash, **kwargs)
 
+        # If there are multiple states in the active stash, move all but one to the deferred stash
         if len(simgr.stashes[stash]) > 1:
             simgr.split(from_stash=stash, to_stash=self.deferred_stash, limit=1)
 
+        # Move all "sticky" states back to the active stash, this is used by the ManualMerger to prevent states from being deferred when they are waiting for a merge
+        simgr.move(from_stash=self.deferred_stash, to_stash=stash, filter_func=lambda s: s.globals.get("sticky", False))
+
         if len(simgr.stashes[stash]) == 0 and len(simgr.stashes[self.deferred_stash]) != 0:
             # Active ran out of states. Repopulate from deferred stash if it is not empty
-            simgr.stashes[stash].append(simgr.stashes[self.deferred_stash].pop(0))  # Pop first item
+            simgr.stashes[stash].append(simgr.stashes[self.deferred_stash].pop())  # Pop first item
 
         return simgr
