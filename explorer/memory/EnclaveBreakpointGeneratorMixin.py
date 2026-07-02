@@ -18,26 +18,29 @@ class EnclaveBreakpointGeneratorMixin(MemoryMixin):
     """
 
     def store(self, addr, data, size=None, **kwargs):
-        if not self.state.solver.satisfiable():
+        extra_condition = kwargs.get("condition", None)
+        if not self.state.solver.satisfiable(extra_constraints=(extra_condition,) if extra_condition is not None else ()):
             return None
 
         with_enclave_boundaries = kwargs.pop("with_enclave_boundaries", True)
         breakpoint_event = ""
 
         if size is None:
-            size = len(data) // self.state.arch.byte_width
+            real_size = len(data) // self.state.arch.byte_width
+        else:
+            real_size = size
 
         # Only enable the mixin if store is called with_enclave_boundaries (default on)
         mixin_enabled = self.category == "mem" and with_enclave_boundaries and po.PandoraOptions().get_option(po.PANDORA_ENCLAVE_MIXIN_ENABLE)
 
         if mixin_enabled:
-            if buffer_entirely_inside_enclave(self.state, addr, size):
+            if buffer_entirely_inside_enclave(self.state, addr, real_size):
                 """
                 Case: Store on buffer that fully lies inside the enclave
                 """
                 breakpoint_event = "trusted_mem_write"
 
-            elif buffer_touches_enclave(self.state, addr, size):
+            elif buffer_touches_enclave(self.state, addr, real_size):
                 """
                 Case: Store on Buffer that can lie outside OR inside the enclave
                 """
@@ -54,7 +57,7 @@ class EnclaveBreakpointGeneratorMixin(MemoryMixin):
                 breakpoint_event,
                 BP_BEFORE,
                 mem_write_address=addr,
-                mem_write_length=size,
+                mem_write_length=real_size,
                 mem_write_expr=data,
             )
 
@@ -72,14 +75,15 @@ class EnclaveBreakpointGeneratorMixin(MemoryMixin):
                 breakpoint_event,
                 BP_AFTER,
                 mem_write_address=addr,
-                mem_write_length=size,
+                mem_write_length=real_size,
                 mem_write_expr=data,
             )
 
         return r
 
     def load(self, addr, size=None, **kwargs):
-        if not self.state.solver.satisfiable():
+        extra_condition = kwargs.get("condition", None)
+        if not self.state.solver.satisfiable(extra_constraints=(extra_condition,) if extra_condition is not None else ()):
             return claripy.BVV(0, size * 8) if size is not None else None
 
         with_enclave_boundaries = kwargs.pop("with_enclave_boundaries", True)

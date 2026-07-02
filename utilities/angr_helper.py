@@ -101,7 +101,7 @@ def get_reg_value(state, reg_name, disable_actions=True, inspect=False):
     reg_sym = get_sym_reg_value(state, reg_name, disable_actions, inspect)
     try:
         reg = state.solver.eval_one(reg_sym)
-    except (angr.errors.SimUnsatError, angr.errors.SimValueError):
+    except (angr.errors.SimUnsatError, angr.errors.SimValueError, angr.errors.SimSolverModeError):
         # No solution or multiple solutions found
         reg = reg_sym
     return reg

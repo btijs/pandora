@@ -328,7 +328,7 @@ def test_buffer_entirely_inside_enclave(state):
     # 2-5. Outside/Inside
     _check_inside("Case 02", False, 0, 10, enclave_range)
     _check_inside("Case 03", True, enclave_range[0] + 0x100, 0x100, enclave_range)
-    _check_inside("Case 03.1", True, enclave_range[0], enclave_range[1] - enclave_range[0], enclave_range)
+    _check_inside("Case 03.1", True, enclave_range[0], enclave_range[1] - enclave_range[0] + 1, enclave_range)
     _check_inside("Case 04", False, 0, 0x5000, enclave_range)
     _check_inside("Case 05", False, 0x5000, 10, enclave_range)
 

@@ -192,7 +192,7 @@ def _report_error(
     unique = symbol not in reporter.plugins[shortname]["ip"]
 
     # Send this event to reporter
-    addr_max = state.solver.max(addr)
+    addr_max = state.solver.max(addr + length - 1)
     addr_min = state.solver.min(addr)
     addr_range = f"[{format_ast(addr_min)}, {format_ast(addr_max)}]"
 
@@ -217,7 +217,7 @@ def _report_error(
             str(bv),  # Name of the symbolic variable
             state.solver.eval(bv),  # Concrete memory content
             state.solver.eval(bv.get_annotations_by_type(taint.MemoryAddressAnnotation)[0].addr),  # Concrete memory address
-            bv.get_annotations_by_type(taint.MemoryAddressAnnotation)[0].addr,  # Symbolic memory address
+            state.solver.simplify(bv.get_annotations_by_type(taint.MemoryAddressAnnotation)[0].addr),  # Symbolic memory address
             state.solver.eval(bv.get_annotations_by_type(taint.MemoryAddressAnnotation)[0].size),  # Size of memory access
         )
 
