@@ -60,8 +60,8 @@ jobs:
           cd ${{ github.workspace }}/pandora/
           uv sync
           cd ${{ github.workspace }}/pandora/angr-platforms
-          pip install .
+          uv pip install --python ${{ github.workspace }}/pandora/.venv .
       - name: Symbolic validation of ${{ matrix.testcase }}
         run: |
           cd ${{ github.workspace }}/pandora/
-          ./pandora.py run -n 30 -p ptr,cf -c config-ci.ini --pandora-option PANDORA_EXPLORE_STACK_DEPTH=1500 ${{ github.workspace }}/pandora-examples/sancus/${{ matrix.testcase }}/main.elf
+          uv run ./pandora.py run -n 30 -p ptr,cf -c config-ci.ini --pandora-option PANDORA_EXPLORE_STACK_DEPTH=1500 ${{ github.workspace }}/pandora-examples/sancus/${{ matrix.testcase }}/main.elf
