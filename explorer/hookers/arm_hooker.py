@@ -76,15 +76,6 @@ class Armv8MHooker(AbstractHooker):
         self.project.hook_symbol("copy_flash_region", SimCopyFlashRegion())
         self.project.hook_symbol("tfm_hal_system_reset", SimBKPT())
 
-        for fun in [
-            # "tfm_plat_otp_init",
-            # "tfm_plat_provisioning_is_required",
-            # "tfm_plat_provisioning_perform",
-            # "tfm_plat_provisioning_check_for_dummy_keys",
-            # "tfm_arch_set_secure_exception_priorities",
-        ]:
-            self.project.hook_symbol(fun, SimSkipFunction(function=fun))
-
         self.project.analyses.CFGFast()
         for addr, func in self.project.kb.functions.items():
             if "WaitOnFlag" in func.name or "WaitFor" in func.name or func.name in ["Flash_EraseSector", "RESET_PeripheralReset"]:

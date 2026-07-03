@@ -77,13 +77,6 @@ class AbstractSDK:
         """
         pass
 
-    def modify_reentry_state(self, reentry_state):
-        """
-        Receives the reentry state and can modify it before execution continues.
-        Useful for SDKs that need to set specific registers or add constraints to the reentry state to speed up exploration or to make it work at all.
-        """
-        return []
-
     def get_reentry_fanout(self, state):
         """
         Called by EnclaveReentry after eenter() on a reentry state. Lets SDKs with multiple

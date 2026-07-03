@@ -197,13 +197,6 @@ class SDKManager(metaclass=Singleton):
         """
         self.sdk.modify_init_state(init_state)
 
-    def modify_reentry_state(self, reentry_state):
-        """
-        Called after explorer prepared the reentry state but before exploration continues after reentry.
-        Useful for SDKs that need to modify the reentry state or add constraints to it to speed up exploration.
-        """
-        return self.sdk.modify_reentry_state(reentry_state)
-
     def get_reentry_fanout(self, state):
         """
         Called by EnclaveReentry after eenter() on a reentry state. Lets SDKs with multiple
