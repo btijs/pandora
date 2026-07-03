@@ -448,11 +448,12 @@ class ReportFormatter:
         _add_extra_section("Execution state info")
 
         fmt.subsection("Backtrace")
-        fmt.trace(f"Basic block trace (most recent first) - Length: {len(item['backtrace'])} {'truncated to 1000' if len(item['backtrace']) > 1000 else ''}", item["backtrace"][:1000] + (["... (truncated)"] if len(item["backtrace"]) > 1000 else []))  # Truncate backtrace to avoid generating huge reports
+        max_len = 1000
+        fmt.trace(f"Basic block trace (most recent first) - Length: {len(item['backtrace'])} {f'truncated to {max_len}' if len(item['backtrace']) > max_len else ''}", item["backtrace"][:max_len] + (["... (truncated)"] if len(item["backtrace"]) > max_len else []))  # Truncate backtrace to avoid generating huge reports
         _add_extra_section("Backtrace")
 
         fmt.subsection("Constraints")
-        fmt.trace("Attacker constraints", item["constraints"])
+        fmt.trace(f"Attacker Constraints {f'truncated to {max_len}' if len(item['constraints']) > max_len else ''}", [self.truncate(cons, max_len=5000) for cons in (item["constraints"][:max_len] + (["... (truncated)"] if len(item["constraints"]) > max_len else []))])
         _add_extra_section("Backtrace")
 
         # Add more extra sections if requested in extra-sections
