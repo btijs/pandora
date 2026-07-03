@@ -45,6 +45,11 @@ jobs:
         with:
           repository: angr/angr-platforms
           path: ${{ github.workspace }}/pandora/angr-platforms
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.26"
+          enable-cache: true
       - name: Setup python
         uses: actions/setup-python@v5
         with:
@@ -53,7 +58,7 @@ jobs:
       - name: Install pandora/angr dependencies
         run: |
           cd ${{ github.workspace }}/pandora/
-          pip install .
+          uv sync
           cd ${{ github.workspace }}/pandora/angr-platforms
           pip install .
       - name: Symbolic validation of ${{ matrix.testcase }}
