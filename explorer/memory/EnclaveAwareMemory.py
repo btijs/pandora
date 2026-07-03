@@ -9,7 +9,7 @@ from angr.storage.memory_mixins import (
     DataNormalizationMixin,
     DictBackerMixin,
     DirtyAddrsMixin,
-    InspectMixinHigh,
+    InspectMixin,
     NameResolutionMixin,
     PagedMemoryMixin,
     PrivilegedPagingMixin,
@@ -35,7 +35,7 @@ class EnclaveAwareMemory(
     NameResolutionMixin,  # description: allows you to provide register names as load addresses, and will automatically translate this to an offset and size.
     DataNormalizationMixin,  # description: Normalizes the data field for a store and the fallback field for a load to be BVs.
     # SimplificationMixin, # hooks stores and first calls state.solver.simplify(data) if options.SIMPLIFY_[MEMORY/REGISTER]_WRITES is set
-    InspectMixinHigh,  # The logic to inspect memory/register reads/writes --> calls ._inspect before/after.
+    InspectMixin,  # The logic to inspect memory/register reads/writes --> calls ._inspect before/after.
     ActionsMixinHigh,
     UnderconstrainedMixin,
     EnclaveBreakpointGeneratorMixin,  # Added for Pandora. Executed before the AddresConcretization to catch untrusted memory accesses.
@@ -43,7 +43,6 @@ class EnclaveAwareMemory(
     SizeNormalizationMixin,
     EnclaveAwareMixin,  # Added for Pandora. Executed after the size is concretized to handle untrusted memory accesses.
     AddressConcretizationMixin,
-    # InspectMixinLow,
     ActionsMixinLow,
     ConditionalMixin,
     ConvenientMappingsMixin,

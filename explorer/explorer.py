@@ -1,7 +1,11 @@
+import dataclasses
+import enum
 import logging
 import sys
+from typing import Any
 
 import angr
+import angr.state_plugins.inspect as angr_inspect
 from angr.exploration_techniques import MemoryWatcher
 
 import pandora_options as po
@@ -43,8 +47,17 @@ class AbstractExplorer(metaclass=Singleton):
         SimState.register_default("sym_memory", EnclaveAwareMemory)
 
         # Second, register Pandora event_types and Pandora inspect_attributes with angrs inspect module
-        angr.state_plugins.inspect.event_types = angr.state_plugins.inspect.event_types.union(PANDORA_EVENT_TYPES)
-        angr.state_plugins.inspect.inspect_attributes = angr.state_plugins.inspect.inspect_attributes.union(PANDORA_INSPECT_ATTRIBUTES)
+        _existing = {m.name: m.value for m in angr_inspect.EventType}
+        _extra = {e.upper(): e for e in PANDORA_EVENT_TYPES}
+        angr_inspect.EventType = enum.StrEnum("EventType", {**_existing, **_extra})
+
+        PandoraInspectAttrs = dataclasses.make_dataclass(
+            "PandoraInspectAttrs",
+            [(name, Any, dataclasses.field(default=None)) for name in PANDORA_INSPECT_ATTRIBUTES],
+            bases=(angr_inspect.InspectAttrs,),
+        )
+        angr_inspect.InspectAttrs = PandoraInspectAttrs
+        angr_inspect.inspect_attributes = frozenset(f.name for f in dataclasses.fields(PandoraInspectAttrs))
 
         # Last, create angr project and initial state
         angr_main_opts = {"backend": angr_backend, "arch": angr_arch}
