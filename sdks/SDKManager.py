@@ -276,7 +276,7 @@ class SDKManager(metaclass=Singleton):
                     target_sdk.prepare_enclave_offset(self.additional_args["sdk_json_file"])
                     # After this, call get_load_addr again
                     load_addr = target_sdk.get_load_addr()
-                    assert(load_addr != -1)
+                    assert load_addr != -1
             return load_addr
         else:
             raise RuntimeError("SDK not initialized yet.")
