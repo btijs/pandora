@@ -1,6 +1,8 @@
 angr-platforms
 uv.lock
 custom_install/
+logs/
+tmp/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

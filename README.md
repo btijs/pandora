@@ -25,7 +25,9 @@ This repository is the research artifact and can also be cited (check GitHub cit
 ## Quickstart
 
 ```bash
-pip3 install .
+# Setup .venv
+uv sync # install uv: https://docs.astral.sh/uv/
+source .venv/bin/activate # or activate.zsh for zsh users and activate.fish for fish users
 
 # Good CLI hopefully makes it easy for you to get started
 ./pandora.py --help
@@ -102,20 +104,12 @@ For us, these issues occur very rarely, and happen non-deterministically. Often,
 
 ## Installation and updating
 
-To install or update, run pip on the requirements script:
+To install or update, we use `uv` (https://docs.astral.sh/uv/):
 
 ```bash
-pip3 install . --upgrade --upgrade-strategy='eager'
+uv sync
 ```
 
-Alternatively, to install and run Pandora in a Python virtual environment:
-
-```bash
-$ sudo python3 -m venv venv
-$ source ./venv/bin/activate
-(venv) $ pip3 install .
-(venv) $ ./pandora.py
-```
 ## Contributing
 
 ### Linting and formatting
