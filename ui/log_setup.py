@@ -85,8 +85,7 @@ class ColorFormatter(logging.Formatter):
             return super(ColorFormatter, self).format(new_record, *args, **kwargs)
         # For above critical, just print the formatted message.
         else:
-            # TODO: This seems to have issues logging dicts.
-            return record.msg.format(*args, **kwargs)
+            return record.getMessage()
 
 
 class PandoraRichHandler(RichHandler):
@@ -96,9 +95,9 @@ class PandoraRichHandler(RichHandler):
         In Pandora, we prepare all logging via the log message. Thus, the handler does not need to perform any
             duties except push that message to the console.
         """
-        message = self.format(record)
         # message_renderable = self.render_message(record, message)
         try:
+            message = self.format(record)
             self.console.print(message, markup=True, highlight=False, soft_wrap=True)
         except Exception:
             self.handleError(record)

@@ -3,7 +3,7 @@ import re
 from functools import singledispatch
 
 from rich.console import Console
-from rich.pretty import Pretty
+from rich.pretty import pretty_repr
 from rich.table import Table
 from rich.theme import Theme
 
@@ -101,9 +101,10 @@ rich_console = Console(theme=Theme({"repr.str": "default italic"}), soft_wrap=Tr
 
 
 def format_rich(msg, style="", rich_content=False, markdown=False, pretty=False):
+    con = rich_console if rich_content else empty_console
     if pretty:
-        return Pretty(msg, expand_all=True, indent_guides=True)
-    return msg
+        return pretty_repr(msg, expand_all=True)
+    return con.render_str(str(msg), style=style, markup=markdown, overflow="ignore", highlight=False).markup
 
 
 """
