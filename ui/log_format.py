@@ -101,17 +101,9 @@ rich_console = Console(theme=Theme({"repr.str": "default italic"}), soft_wrap=Tr
 
 
 def format_rich(msg, style="", rich_content=False, markdown=False, pretty=False):
-    if not rich_content:
-        con = empty_console
-    else:
-        con = rich_console
-
     if pretty:
-        msg = Pretty(msg, expand_all=True, indent_guides=True)
-
-    with con.capture() as capture:
-        con.print(msg, end="", style=style, markup=markdown, overflow="ignore")
-    return capture.get()  # .rstrip('\n')
+        return Pretty(msg, expand_all=True, indent_guides=True)
+    return msg
 
 
 """
