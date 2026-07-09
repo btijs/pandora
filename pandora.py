@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import sys
+import time
 from dataclasses import dataclass
 from itertools import count
 
@@ -86,6 +87,7 @@ class PandoraContext:
     sdk_elf_file: Path
     sdk_json_file: Path
     idau_json_file: Path
+    timeout: int = -1
 
 
 def pandora_setup(pandora_ctx: PandoraContext, binary_path: Path):
@@ -239,6 +241,7 @@ def pandora_explore(pandora_ctx: PandoraContext):
     executed_num_steps = 0
     handled_error_states = 0
     pandora_state["in_execution"] = True
+    start_time = time.time()
 
     with Live(Group(console_progress, state_progress), console=console):
         task = console_progress.add_task(description="Running symbolic execution at step", total=None if pandora_ctx.num_steps <= 0 else pandora_ctx.num_steps)
@@ -248,7 +251,7 @@ def pandora_explore(pandora_ctx: PandoraContext):
         unmapped_dict = {}
 
         # Then start a loop that keeps updating the iterator and performs an exploration step
-        while not is_done and current_step is not None and not po.PANDORA_USER_REQUESTED_EXIT:
+        while not is_done and current_step is not None and not po.PANDORA_USER_REQUESTED_EXIT and (time.time() - start_time < pandora_ctx.timeout if pandora_ctx.timeout > 0 else True):
             # Remember the total number of steps made so far (We lose that if the iterator runs out)
             executed_num_steps = current_step
 
@@ -664,6 +667,7 @@ def main_callback(
     report_fmt: str = typer.Option("html", "-r", "--report", callback=report_callback, metavar="[" + "|".join(report_formats.keys()) + "]", help="Define the format for all plugin reports.", rich_help_panel="Report generation"),
     report_max_ips: int = typer.Option(0, "--report-ips", help="Maximum number of duplicate reports per unique IP for all plugin HTML reports. 0 or negative to report all.", rich_help_panel="Report generation"),
     with_cfg: bool = typer.Option(False, "--with-cfg", help="EXPERIMENTAL: Exports a CFG on exit after finishing exploration. CFG will contain information on reached basic blocks. Feature may break or stall exploration completely, depending on binary..", rich_help_panel="Exploration options"),
+    timeout: int = typer.Option(-1, "--timeout", help="Maximum time in seconds to run the exploration. 0 or negative disables timeout.", rich_help_panel="Exploration options"),
 ):
     """
     Pandora: Principled vulnerability detection for SGX binaries.
