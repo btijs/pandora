@@ -3,6 +3,7 @@ import re
 from functools import singledispatch
 
 from rich.console import Console
+from rich.markup import escape
 from rich.pretty import pretty_repr
 from rich.table import Table
 from rich.theme import Theme
@@ -162,7 +163,10 @@ def format_table(kv_values, headers=None):
     for entry in kv_values:
         table.add_row(*[str(v) for v in entry])
 
-    return format_rich(table, rich_content=True)
+    capture_console = Console(no_color=True, soft_wrap=True)
+    with capture_console.capture() as capture:
+        capture_console.print(table, markup=False, highlight=False)
+    return escape(capture.get().rstrip("\n"))
 
 
 def format_link(url, linkname):
@@ -252,7 +256,7 @@ def get_state_backtrace_formatted(state):
     """
     bbt = []
     for a in state.history.bbl_addrs:
-        sym_name = SymbolManager().get_symbol_with_offset(a)
+        sym_name = escape(SymbolManager().get_symbol_with_offset(a))
         rel = SymbolManager().get_rebased_addr(a)
         bbt.append(f"{sym_name:<35} ({rel:#x} relative to obj base)")
     return list(reversed(bbt))
@@ -265,7 +269,7 @@ def get_state_backtrace_compact(state):
         sym_name, _ = SymbolManager().get_symbol(a)
         rel = SymbolManager().get_rebased_addr(a)
         if sym_name != sym_name_prev:
-            bbt.append(f"{a:#x} {'<' + sym_name + '>':<35} ({rel:#x} relative to obj base)")
+            bbt.append(f"{a:#x} {'<' + escape(sym_name) + '>':<35} ({rel:#x} relative to obj base)")
         sym_name_prev = sym_name
     return bbt
 
@@ -313,7 +317,7 @@ def format_asm(state, formatting=None, angr_project=None, use_ip=None, highlight
     # proj.factory.block(ip).vex.pp()
     # print('---- END VEX ----')
 
-    return pretty_print_str
+    return escape(pretty_print_str)
 
 
 def dump_asm(state, logger, log_level=logging.DEBUG, header_msg="", angr_project=None, use_ip=None):

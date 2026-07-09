@@ -1,4 +1,5 @@
 import datetime
+import io
 import logging
 import re
 from collections import defaultdict
@@ -7,7 +8,9 @@ from pathlib import Path
 import dominate
 import dominate.tags as tags
 import dominate.util
-from ansi2html import Ansi2HTMLConverter
+from rich.console import Console
+from rich.markup import escape
+from rich.text import Text
 
 from ui import pandora_root_dir
 from ui.log_format import (
@@ -74,9 +77,18 @@ def escape_ansi(line):
     return ansi_escape.sub("", line)
 
 
+def strip_rich_markup(s):
+    """
+    Drops any rich markup tags (e.g. "[bold]..[/bold]", as produced by ui.log_format's
+    format_*() helpers) from s, leaving only the underlying plain text - for display contexts
+    (like a plain HTML alert box) that don't otherwise interpret rich markup.
+    """
+    return Text.from_markup(escape_ansi(s)).plain
+
+
 class LogFileFormatter(logging.Formatter):
     def format(self, record):
-        return escape_ansi(record.msg)
+        return strip_rich_markup(record.getMessage())
 
 
 class LogFormatter(BaseFormatter):
@@ -95,14 +107,14 @@ class LogFormatter(BaseFormatter):
         self.logger.info(f"==== LogFormatter for {title} ====")
 
     def text(self, text):
-        self.logger.info(text)
+        self.logger.info(escape(text))
 
     def info(self, title, info):
-        self.logger.info(f"[INFO] {info}")
+        self.logger.info(f"[INFO] {escape(info)}")
         pass
 
     def alert(self, title, info):
-        self.logger.warning(f"[ALERT] {info}")
+        self.logger.warning(f"[ALERT] {escape(info)}")
 
     def section(self, ip, sym, info, severity):
         self.logger.log(severity, "--------------------------------------------------------------------------------")
@@ -146,7 +158,6 @@ class HTMLFormatter(BaseFormatter):
 
     def __init__(self, title, path, max_ips=0):
         self.path = path
-        self.conv = Ansi2HTMLConverter()
         self.label_count = 0
         self.sec_map = defaultdict(lambda: [])
         self.max_ips = max_ips
@@ -160,7 +171,6 @@ class HTMLFormatter(BaseFormatter):
                     dominate.util.raw("</style>\n")
 
             tags.meta(name="viewport", content="width=device-width, initial-scale=1")
-            dominate.util.raw("\n" + self.conv.produce_headers())
         self.content = self.html.body.add(tags.div(cls="container d-grid gap-3", style="margin-bottom:200px"))
 
         with self.html.body:
@@ -180,8 +190,17 @@ class HTMLFormatter(BaseFormatter):
         with open(self.path, "w") as f:
             print(self.html, file=f)
 
-    def ansi2html(self, s):
-        return dominate.util.raw(self.conv.convert(s, full=False))
+    def markup_to_html(self, s):
+        """
+        Renders a string that may contain rich markup tags (as produced by ui.log_format's
+        format_*() helpers, e.g. "[bold red]..[/bold red]") to an HTML snippet with inline
+        styles. Content is captured off-screen (file=io.StringIO()) so nothing leaks to the
+        live console; force_terminal+color_system are needed so Rich actually resolves styles
+        into exportable colors instead of assuming a non-color terminal.
+        """
+        con = Console(record=True, force_terminal=True, color_system="standard", file=io.StringIO())
+        con.print(s, markup=True, highlight=False, soft_wrap=True)
+        return dominate.util.raw(con.export_html(inline_styles=True, code_format="{code}"))
 
     def str_to_html(self, s):
         # Convert newlines to <br> and \t to &emsp;
@@ -223,7 +242,7 @@ class HTMLFormatter(BaseFormatter):
         self.create_box(info, title, "info-circle", "primary")
 
     def alert(self, title, info):
-        self.create_box(escape_ansi(info), title, "exclamation-triangle", "warning")
+        self.create_box(strip_rich_markup(info), title, "exclamation-triangle", "warning")
 
     def create_badge(self, lbl, style):
         return tags.span(lbl, cls=f"badge rounded-pill {style}", style="text-overflow: ellipsis; overflow: hidden; max-width: 750px;")
@@ -309,7 +328,7 @@ class HTMLFormatter(BaseFormatter):
         self.subsubsection(name, t)
 
     def verbatim(self, name, text):
-        self.subsubsection(name, self.ansi2html(text))
+        self.subsubsection(name, self.markup_to_html(text))
 
     def create_table(self, values, headers=None):
         # https://getbootstrap.com/docs/5.2/content/tables/

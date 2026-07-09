@@ -65,9 +65,9 @@ class ColorFormatter(logging.Formatter):
     def fmt_rich(self, key, s, style):
         con = self.consoles[key]
         width = self.console_width[key]
-        with con.capture() as capture:
-            con.print(s, end="", style=style, justify="left", width=width, overflow="ignore")
-        return capture.get().rstrip("\n")
+        padded = s if width is None else s.ljust(width)
+        resolved_style = con.get_style(style)
+        return con.render_str(padded, style=resolved_style, overflow="ignore", highlight=False).markup
 
     def format(self, record, *args, **kwargs):
         # if the corresponding logger has children, they may receive modified
