@@ -3,7 +3,7 @@ from angr.storage.memory_mixins import (
     ActionsMixinLow,
     AddressConcretizationMixin,
     ClemoryBackerMixin,
-    ConcreteBackerMixin,
+    # ConcreteBackerMixin,
     ConditionalMixin,
     ConvenientMappingsMixin,
     DataNormalizationMixin,
@@ -49,7 +49,7 @@ class EnclaveAwareMemory(
     DirtyAddrsMixin,
     # -----
     StackAllocationMixin,
-    ConcreteBackerMixin,
+    # ConcreteBackerMixin,
     ClemoryBackerMixin,
     DictBackerMixin,
     PrivilegedPagingMixin,
