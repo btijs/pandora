@@ -45,8 +45,8 @@ class Armv8MHooker(AbstractHooker):
 
                 hook = SimSG()
                 self.project.hook(hook_addr, hook, length=instr.size)
-            elif instr.mnemonic == "bkpt":
-                logger.info(f"Found BKPT instruction at address 0x{hook_addr:x} {instr.size}. Hooking now...")
+            elif instr.mnemonic in ["bkpt", "wfi"]:
+                logger.info(f"Found {instr.mnemonic.upper()} instruction at address 0x{hook_addr:x} {instr.size}. Hooking now...")
                 hook = SimBKPT()
                 # hook = SimNop(bytes_to_skip=instr.size, mnemonic=instr.mnemonic, opstr=instr.op_str)
                 self.project.hook(hook_addr, hook, length=instr.size)
@@ -76,8 +76,24 @@ class Armv8MHooker(AbstractHooker):
         self.project.hook_symbol("copy_flash_region", SimCopyFlashRegion())
         self.project.hook_symbol("tfm_hal_system_reset", SimBKPT())
 
+        self.project.hook_symbol("__aeabi_memcpy", SimMemCpy())
+        self.project.hook_symbol("__aeabi_memset", SIM_PROCEDURES["libc"]["memset"]())
+
         self.project.analyses.CFGFast()
+        skipped_functions = [
+            "Flash_EraseSector",
+            "RESET_PeripheralReset",
+            "prioritise_secure_exceptions.isra.0",
+            "verify_hse_version.isra.0",
+            "store_se_otp_version.isra.0",
+            "store_otp_configuration",
+            "enable_page_locks.isra.0",
+        ]
+        partial_skipped_functions = [
+            "WaitOnFlag",
+            "WaitFor",
+        ]
         for addr, func in self.project.kb.functions.items():
-            if "WaitOnFlag" in func.name or "WaitFor" in func.name or func.name in ["Flash_EraseSector", "RESET_PeripheralReset"]:
+            if any(substring in func.name for substring in partial_skipped_functions) or func.name in skipped_functions:
                 logger.info(f"Hooking {func} at address 0x{addr:x}...")
                 self.project.hook_symbol(addr, SimSkipFunction(function=func))
