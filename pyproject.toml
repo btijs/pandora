@@ -5,12 +5,13 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "angr>=9.2.224",
+    "angr>=9.3.0",
     "angr-utils>=0.5.0",
     "ansi2html>=1.9.2",
     "dominate>=2.9.1",
     "ipython>=9.7.0",
     "json5>=0.12.1",
+    "monkeyhex>=1.7.4",
     "pre-commit>=4.5.1",
     "typer>=0.20.0",
     "unicorn>=2.1.4",

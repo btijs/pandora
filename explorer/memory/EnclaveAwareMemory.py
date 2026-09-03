@@ -49,7 +49,6 @@ class EnclaveAwareMemory(
     DirtyAddrsMixin,
     # -----
     StackAllocationMixin,
-    # ConcreteBackerMixin,
     ClemoryBackerMixin,
     DictBackerMixin,
     PrivilegedPagingMixin,
