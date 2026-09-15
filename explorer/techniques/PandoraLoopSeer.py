@@ -106,7 +106,7 @@ class PandoraLoopSeer(ExplorationTechnique):
 
         if len(stuck_states) > 0:
             # Only move states if we have some to move AND we can also swap some back in.
-            if len(simgr.active) + len(simgr.deferred) == len(stuck_states):
+            if len(simgr.active) + len(simgr.stashes.get("deferred", [])) == len(stuck_states):
                 if len(simgr.stashes[self.deferred_stash]) == 0:
                     return simgr.step(**kwargs)
                 else:
