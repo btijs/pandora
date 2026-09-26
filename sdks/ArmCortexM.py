@@ -9,7 +9,7 @@ from explorer.taint import AttackerTaintConservative
 from sdks.AbstractSDK import AbstractSDK
 from sdks.SAU_IDAU import IDAU, SAU, FullAttributionUnit
 from ui import console
-from utilities.angr_helper import set_reg_value
+from utilities.angr_helper import get_reg_value, set_reg_value
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +74,9 @@ class ArmCortexM(AbstractSDK):
         # set_reg_value(eenter_state, "control", 0b10)  # Use PSP and unprivileged mode
 
         # set_reg_value(eenter_state, "sp", 0x30012000)
+
+        cpsr = get_reg_value(init_state, "cpsr")
+        set_reg_value(init_state, "cpsr", cpsr & ~0x1FF)  # Clear IPSR (lower 9 bits)
 
         init_state.globals["secure"] = True
         init_state.globals["secure_init_finished"] = False

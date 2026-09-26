@@ -53,12 +53,15 @@ class StackSealPlugin(BasePlugin):
 def check_stack_correctly_sealed(state):
     sp_to_seal = get_sp_to_seal(state)
 
+    if sp_to_seal is None:
+        return
+
     sp_value = get_reg_value(state, sp_to_seal)
     sp_value = concretize_value_or_none(state, sp_value)
     if sp_value is None:
         info = f"Could not concretize {sp_to_seal} value, skipping stack sealing check."
-        logger.warning(info)
-        return Reporter().report(info, state, logger, seal_shortname, logging.WARNING)
+        Reporter().report(info, state, logger, seal_shortname, logging.WARNING)
+        return
 
     if not is_sealed(state, sp_value):
         info = f"Stack is not sealed at {sp_to_seal.upper()} value {hex(sp_value)}"
@@ -68,15 +71,15 @@ def check_stack_correctly_sealed(state):
         logger.info(f"Stack is correctly sealed at {sp_to_seal.upper()} value {hex(sp_value)}")
 
 
-def get_sp_to_seal(state) -> str:
-    xpsr = get_reg_value(state, "cpsr")  # xpsr is called cpsr in angr
-    xpsr = concretize_value_or_none(state, xpsr)
-    if xpsr is None:
+def get_sp_to_seal(state) -> str | None:
+    ipsr = get_reg_value(state, "cpsr") & 0x1FF  # xpsr is called cpsr in angr
+    ipsr = concretize_value_or_none(state, ipsr)
+    if ipsr is None:
         info = "Could not concretize xPSR, skipping stack sealing check."
-        logger.warning(info)
-        return Reporter().report(info, state, logger, seal_shortname, logging.WARNING)
+        Reporter().report(info, state, logger, seal_shortname, logging.WARNING)
+        return None
 
-    if (xpsr & 0x1FF) != 0:
+    if (ipsr & 0x1FF) != 0:
         # If IPSR != 0, we are in handler mode
         # In handler mode, MSP is used, so PSP should be sealed
         return "psp"
@@ -87,8 +90,8 @@ def get_sp_to_seal(state) -> str:
         control = concretize_value_or_none(state, control)
         if control is None:
             info = "Could not concretize CONTROL register, skipping stack sealing check."
-            logger.warning(info)
-            return Reporter().report(info, state, logger, seal_shortname, logging.WARNING)
+            Reporter().report(info, state, logger, seal_shortname, logging.WARNING)
+            return None
 
         if (control & 0b10) == 0:
             # If CONTROL[1] == 0, MSP is used, so PSP should be sealed
