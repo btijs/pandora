@@ -90,7 +90,7 @@ def get_sps_to_seal(state) -> set[str]:
         if state.solver.satisfiable(extra_constraints=[control & 0b10 == 0]):
             # If CONTROL[1] == 0, MSP is used, so PSP should be sealed
             possible_sps.add("psp")
-        if state.solver.satisfiable(extra_constraints=[control & 0b10 == 1]):
+        if state.solver.satisfiable(extra_constraints=[control & 0b10 == 0b10]):
             # If CONTROL[1] == 1, PSP is used, so MSP should be sealed
             possible_sps.add("msp")
     return possible_sps
