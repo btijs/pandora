@@ -51,59 +51,53 @@ class StackSealPlugin(BasePlugin):
 
 
 def check_stack_correctly_sealed(state):
-    sp_to_seal = get_sp_to_seal(state)
+    sps_to_seal = get_sps_to_seal(state)
 
-    if sp_to_seal is None:
-        return
+    any_stack_sealed = False
 
-    sp_value = get_reg_value(state, sp_to_seal)
-    sp_value = concretize_value_or_none(state, sp_value)
-    if sp_value is None:
-        info = f"Could not concretize {sp_to_seal} value, skipping stack sealing check."
+    for sp_to_seal in sps_to_seal:
+        sp_value = get_reg_value(state, sp_to_seal)
+        sp_value = concretize_value_or_none(state, sp_value)
+
+        if sp_value is None:
+            logger.warning(f"Could not concretize {sp_to_seal} value, skipping stack sealing check for this stack pointer.")
+            continue
+
+        if is_sealed(state, sp_value):
+            logger.info(f"Stack is correctly sealed at {sp_to_seal.upper()} value {hex(sp_value)}")
+            any_stack_sealed = True
+
+    if not any_stack_sealed:
+        info = f"Stack is not correctly sealed at any of the possible stack pointers: {', '.join(sps_to_seal)}"
         Reporter().report(info, state, logger, seal_shortname, logging.WARNING)
-        return
-
-    if not is_sealed(state, sp_value):
-        info = f"Stack is not sealed at {sp_to_seal.upper()} value {hex(sp_value)}"
-        Reporter().report(info, state, logger, seal_shortname, logging.WARNING)
-        taint_action(state=state, info=info, level=logging.WARNING)
     else:
-        logger.info(f"Stack is correctly sealed at {sp_to_seal.upper()} value {hex(sp_value)}")
+        logger.info(f"Stack is correctly sealed at at least one of the possible stack pointers: {', '.join(sps_to_seal)}")
 
 
-def get_sp_to_seal(state) -> str | None:
-    ipsr = get_reg_value(state, "cpsr") & 0x1FF  # xpsr is called cpsr in angr
-    ipsr = concretize_value_or_none(state, ipsr)
-    if ipsr is None:
-        info = "Could not concretize xPSR, skipping stack sealing check."
-        Reporter().report(info, state, logger, seal_shortname, logging.WARNING)
-        return None
+def get_sps_to_seal(state) -> set[str]:
+    ipsr = get_reg_value(state, "cpsr")[8:0]  # xpsr is called cpsr in angr
 
-    if (ipsr & 0x1FF) != 0:
+    possible_sps = set()
+    if state.solver.satisfiable(extra_constraints=[ipsr != 0]):
         # If IPSR != 0, we are in handler mode
         # In handler mode, MSP is used, so PSP should be sealed
-        return "psp"
-    else:
+        possible_sps.add("psp")
+    if state.solver.satisfiable(extra_constraints=[ipsr == 0]):
         # If IPSR == 0, we are in thread mode
         # In thread mode, CONTROL[1] determines whether MSP or PSP is used
         control = get_reg_value(state, "control")
-        control = concretize_value_or_none(state, control)
-        if control is None:
-            info = "Could not concretize CONTROL register, skipping stack sealing check."
-            Reporter().report(info, state, logger, seal_shortname, logging.WARNING)
-            return None
 
-        if (control & 0b10) == 0:
+        if state.solver.satisfiable(extra_constraints=[control & 0b10 == 0]):
             # If CONTROL[1] == 0, MSP is used, so PSP should be sealed
-            return "psp"
-        else:
+            possible_sps.add("psp")
+        if state.solver.satisfiable(extra_constraints=[control & 0b10 == 1]):
             # If CONTROL[1] == 1, PSP is used, so MSP should be sealed
-            return "msp"
+            possible_sps.add("msp")
+    return possible_sps
 
 
 def is_sealed(state, sp_value):
     # Load the value at the stack pointer and check if it matches the sealing value (0xFEF5EDA5)
     expected_sealing_value = 0xFEF5EDA5
     real_sealing_value = state.memory.load(claripy.BVV(sp_value, state.arch.bits), 4, disable_actions=True, inspect=False, endness=archinfo.Endness.LE)
-    real_sealing_value = concretize_value_or_none(state, real_sealing_value)
-    return real_sealing_value == expected_sealing_value
+    return not state.solver.satisfiable(extra_constraints=[expected_sealing_value != real_sealing_value])

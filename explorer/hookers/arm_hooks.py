@@ -9,7 +9,7 @@ from claripy import ast
 from sdks.SAU_IDAU import ProcessorPrivilegeLevel, ProcessorSecurityState
 from sdks.SDKManager import SDKManager
 from ui.report import Reporter
-from utilities.angr_helper import attacker_taint_regs, get_reg_value, set_reg_value
+from utilities.angr_helper import attacker_taint_regs
 from utilities.helper import hexify
 
 logger = logging.getLogger(__name__)
@@ -65,9 +65,6 @@ class SimSG(SimProcedure):
             # Coming from non-secure world, switch to secure
             attacker_taint_regs(self.state, SDKManager().get_safe_registers() + ["pc", "sp", "msp", "psp", "msplim", "psplim"])
 
-            cpsr = get_reg_value(self.state, "cpsr")
-            set_reg_value(self.state, "cpsr", cpsr & ~0x1FF)  # Clear IPSR (lower 9 bits)
-
             # Bit 0 of lr must be set to 0
             self.state.regs.lr = self.state.regs.lr & ~1
 
@@ -96,9 +93,6 @@ def nsc_fan_out(state):
     tainted_state = state.copy()
 
     attacker_taint_regs(tainted_state, SDKManager().get_safe_registers() + ["pc", "sp", "msp", "psp", "msplim", "psplim"])
-
-    cpsr = get_reg_value(tainted_state, "cpsr")
-    set_reg_value(tainted_state, "cpsr", cpsr & ~0x1FF)  # Clear IPSR (lower 9 bits)
 
     # Clear the history to make reporting less cluttered
     tainted_state.history.trim()
