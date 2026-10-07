@@ -59,6 +59,7 @@ class SymbolManager(metaclass=Singleton):
             return
 
         self.symbol_table = []
+        self.symbol_sizes = {}
         self.elf_name = str(elf_file)
 
         elf_stream = open(elf_file, "rb")
@@ -92,6 +93,7 @@ class SymbolManager(metaclass=Singleton):
             t = s.entry["st_info"]["type"]
             if t == "STT_FUNC" or t == "STT_OBJECT" or t == "STT_NOTYPE":
                 self.symbol_table.append((s.entry["st_value"] + self.rebase_offset, s.name))
+                self.symbol_sizes[s.name] = s.entry["st_size"]
 
         self.symbol_table.sort(key=lambda t: t[0])
 
@@ -153,6 +155,15 @@ class SymbolManager(metaclass=Singleton):
             k = list(self.symbol_table.keys())
             if name in v:
                 return k[v.index(name)]
+        return None
+
+    def symbol_size(self, name):
+        if self.symbol_table is None:
+            sym = self.init_state.project.loader.find_symbol(name)
+            if sym is not None:
+                return sym.size
+        else:
+            return self.symbol_sizes.get(name)
         return None
 
     def _get_addr_offset(self, addr):

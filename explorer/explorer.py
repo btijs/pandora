@@ -14,6 +14,7 @@ import ui.log_setup
 from explorer.engine.PandoraEngine import PandoraEngine
 from explorer.techniques.ManualMerger import ManualMerger
 from explorer.techniques.Reporter import Reporter
+from sdks.SymbolManager import SymbolManager
 from ui.action import UserActionWithLevel
 from ui.action_manager import ActionManager
 from ui.log_format import get_state_backtrace_compact, get_state_backtrace_formatted
@@ -271,6 +272,20 @@ class BasicBlockExplorer(AbstractExplorer):
 
                 if merge_addrs:
                     self.simgr.use_technique(ManualMerger(start_addr, merge_addrs, wait_counter=10))
+
+            # For intel_sgx_sdk
+            # Resolved via the SymbolManager, as enclave dumps have no symbols in the angr loader (requires --sdk-elf-file
+            # or a matching .so next to the dump).
+            # All paths join at the shared `pop %rbp; ret` epilogue (last 2 bytes), with eax already set to 0/1.
+            # Offset differs per SDK version (2.13.3 lacks endbr64), so derive it from the symbol size.
+            for sgx_fn in ["sgx_is_outside_enclave", "sgx_is_within_enclave"]:
+                start_addr = SymbolManager().symbol_to_addr(sgx_fn)
+                size = SymbolManager().symbol_size(sgx_fn)
+                if start_addr is None or not size:
+                    logger.debug(f"ManualMerger: symbol {sgx_fn} not found, not merging it")
+                    continue
+                merge_addrs = [start_addr + size - 2]
+                self.simgr.use_technique(ManualMerger(start_addr, merge_addrs, wait_counter=10))
 
             # To log basic blocks when logging is set to TRACE, we use the TraceLogger
             self.simgr.use_technique(TraceLogger())

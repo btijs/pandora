@@ -80,7 +80,7 @@ class ManualMerger(ExplorationTechnique):
             # Merge states and add to active stash
             grouped_states = self.group_states_by_return_value(simgr.stashes[src_stash])
 
-            logger.info(f"Merging {len(simgr.stashes[src_stash])} states with return values {[state.regs.r0 for state in simgr.stashes[src_stash]]}")
+            logger.info(f"Merging {len(simgr.stashes[src_stash])} states with return values {[self.get_return_value(state) for state in simgr.stashes[src_stash]]}")
             logger.info(f"Resulting groups: { {ret_val: len(states) for ret_val, states in grouped_states.items()} }")
             logger.debug(f"All stashes before merging: { {s: len(simgr.stashes[s]) for s in simgr.stashes} }")
 
@@ -102,9 +102,14 @@ class ManualMerger(ExplorationTechnique):
 
         return simgr
 
+    @staticmethod
+    def get_return_value(state: angr.SimState):
+        """Read the architecture's return register (e.g. r0 on ARM, rax on AMD64)."""
+        return state.registers.load(state.arch.ret_offset, state.arch.bytes)
+
     def group_states_by_return_value(self, states):
         """
-        Group states by their return value (r0) and address (lr).
+        Group states by their return value (arch return register, e.g. r0 or rax).
 
         Args:
             states: List of states to group
@@ -115,7 +120,7 @@ class ManualMerger(ExplorationTechnique):
         grouped: dict[int, list[angr.SimState]] = defaultdict(list)
 
         for state in states:
-            ret_val = state.regs.r0
+            ret_val = self.get_return_value(state)
 
             # Try to get concrete return value
             if state.solver.symbolic(ret_val):
