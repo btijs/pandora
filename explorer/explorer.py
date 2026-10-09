@@ -28,6 +28,7 @@ from .techniques.ExplorationStatistics import ExplorationStatistics
 from .techniques.LengthLimiter import LengthLimiter
 from .techniques.PandoraDFS import PandoraDFS
 from .techniques.PandoraLoopSeer import PandoraLoopSeer
+from .techniques.SelfLoopBreaker import SelfLoopBreaker
 from .techniques.TraceLogger import TraceLogger
 
 logger = logging.getLogger(__name__)
@@ -250,6 +251,9 @@ class BasicBlockExplorer(AbstractExplorer):
 
             if pandora_options[po.PANDORA_EXPLORE_USE_LOOP_SEER]:
                 self.simgr.use_technique(PandoraLoopSeer(bound=pandora_options[po.PANDORA_EXPLORE_LOOP_SEER_BOUND]))
+
+            # Stop paths that are stuck on a branch to their own address (e.g., `b.n .`)
+            self.simgr.use_technique(SelfLoopBreaker())
 
             self.simgr.use_technique(MemoryWatcher(min_memory=1024 * pandora_options[po.PANDORA_EXPLORE_MIN_FREE_MEMORY]))
 
