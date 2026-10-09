@@ -253,39 +253,41 @@ class BasicBlockExplorer(AbstractExplorer):
 
             self.simgr.use_technique(MemoryWatcher(min_memory=1024 * pandora_options[po.PANDORA_EXPLORE_MIN_FREE_MEMORY]))
 
-            # For tfm
-            tfm_hal_memory_check_symbol = self.proj.loader.find_symbol("tfm_hal_memory_check")
-            cmse_check_address_range_symbol = self.proj.loader.find_symbol("cmse_check_address_range")
-            if tfm_hal_memory_check_symbol is not None:
-                start_addr = tfm_hal_memory_check_symbol.rebased_addr
-                merge_addr = start_addr + 12
-                self.simgr.use_technique(ManualMerger(start_addr, [merge_addr], wait_counter=10))
+            if pandora_options[po.PANDORA_EXPLORE_USE_MANUAL_MERGER]:
+                tfm_hal_memory_check_symbol = self.proj.loader.find_symbol("tfm_hal_memory_check")
+                cmse_check_address_range_symbol = self.proj.loader.find_symbol("cmse_check_address_range")
 
-            # For riot-tee
-            elif cmse_check_address_range_symbol is not None:
-                start_addr = cmse_check_address_range_symbol.rebased_addr
-                merge_addrs = []
-                if self.proj.loader.find_symbol("tee_secure_entry"):
-                    merge_addrs = [start_addr + 58, start_addr + 0xD6]
-                elif self.proj.loader.find_symbol("ioctl"):
-                    merge_addrs = [start_addr + 0x42]
+                # For tfm
+                if tfm_hal_memory_check_symbol is not None:
+                    start_addr = tfm_hal_memory_check_symbol.rebased_addr
+                    merge_addr = start_addr + 12
+                    self.simgr.use_technique(ManualMerger(start_addr, [merge_addr], wait_counter=10))
+                elif cmse_check_address_range_symbol is not None:
+                    start_addr = cmse_check_address_range_symbol.rebased_addr
+                    merge_addrs = []
+                    # For riot-tee
+                    if self.proj.loader.find_symbol("tee_secure_entry"):
+                        merge_addrs = [start_addr + 0xE0, start_addr + 0x3C]
+                    # For mTower
+                    elif self.proj.loader.find_symbol("ioctl"):
+                        merge_addrs = [start_addr + 0x42]
 
-                if merge_addrs:
+                    if merge_addrs:
+                        self.simgr.use_technique(ManualMerger(start_addr, merge_addrs, wait_counter=10))
+
+                # For intel_sgx_sdk
+                # Resolved via the SymbolManager, as enclave dumps have no symbols in the angr loader (requires --sdk-elf-file
+                # or a matching .so next to the dump).
+                # All paths join at the shared `pop %rbp; ret` epilogue (last 2 bytes), with eax already set to 0/1.
+                # Offset differs per SDK version (2.13.3 lacks endbr64), so derive it from the symbol size.
+                for sgx_fn in ["sgx_is_outside_enclave", "sgx_is_within_enclave"]:
+                    start_addr = SymbolManager().symbol_to_addr(sgx_fn)
+                    size = SymbolManager().symbol_size(sgx_fn)
+                    if start_addr is None or not size:
+                        logger.debug(f"ManualMerger: symbol {sgx_fn} not found, not merging it")
+                        continue
+                    merge_addrs = [start_addr + size - 2]
                     self.simgr.use_technique(ManualMerger(start_addr, merge_addrs, wait_counter=10))
-
-            # For intel_sgx_sdk
-            # Resolved via the SymbolManager, as enclave dumps have no symbols in the angr loader (requires --sdk-elf-file
-            # or a matching .so next to the dump).
-            # All paths join at the shared `pop %rbp; ret` epilogue (last 2 bytes), with eax already set to 0/1.
-            # Offset differs per SDK version (2.13.3 lacks endbr64), so derive it from the symbol size.
-            for sgx_fn in ["sgx_is_outside_enclave", "sgx_is_within_enclave"]:
-                start_addr = SymbolManager().symbol_to_addr(sgx_fn)
-                size = SymbolManager().symbol_size(sgx_fn)
-                if start_addr is None or not size:
-                    logger.debug(f"ManualMerger: symbol {sgx_fn} not found, not merging it")
-                    continue
-                merge_addrs = [start_addr + size - 2]
-                self.simgr.use_technique(ManualMerger(start_addr, merge_addrs, wait_counter=10))
 
             # To log basic blocks when logging is set to TRACE, we use the TraceLogger
             self.simgr.use_technique(TraceLogger())
