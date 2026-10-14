@@ -35,7 +35,7 @@ PANDORA_EXPLORE_USE_LOOP_SEER_DEFAULT = False
 PANDORA_EXPLORE_LOOP_SEER_BOUND = "PANDORA_EXPLORE_LOOP_SEER_BOUND"
 PANDORA_EXPLORE_LOOP_SEER_BOUND_DEFAULT = 100
 
-# Manual merger merges states at hardcoded merge points of known address-range check functions (TF-M, RIOT-TEE, mTower, SGX SDK)
+# Manual merger auto-detects pure, branchy leaf functions (e.g. address-range checks) from the CFG and merges states on their return value
 PANDORA_EXPLORE_USE_MANUAL_MERGER = "PANDORA_EXPLORE_USE_MANUAL_MERGER"
 PANDORA_EXPLORE_USE_MANUAL_MERGER_DEFAULT = True
 

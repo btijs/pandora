@@ -12,9 +12,8 @@ import pandora_options as po
 import ui.log_format as log_format
 import ui.log_setup
 from explorer.engine.PandoraEngine import PandoraEngine
-from explorer.techniques.ManualMerger import ManualMerger
+from explorer.techniques.ManualMerger import ManualMerger, find_merge_candidates
 from explorer.techniques.Reporter import Reporter
-from sdks.SymbolManager import SymbolManager
 from ui.action import UserActionWithLevel
 from ui.action_manager import ActionManager
 from ui.log_format import get_state_backtrace_compact, get_state_backtrace_formatted
@@ -258,40 +257,16 @@ class BasicBlockExplorer(AbstractExplorer):
             self.simgr.use_technique(MemoryWatcher(min_memory=1024 * pandora_options[po.PANDORA_EXPLORE_MIN_FREE_MEMORY]))
 
             if pandora_options[po.PANDORA_EXPLORE_USE_MANUAL_MERGER]:
-                tfm_hal_memory_check_symbol = self.proj.loader.find_symbol("tfm_hal_memory_check")
-                cmse_check_address_range_symbol = self.proj.loader.find_symbol("cmse_check_address_range")
-
-                # For tfm
-                if tfm_hal_memory_check_symbol is not None:
-                    start_addr = tfm_hal_memory_check_symbol.rebased_addr
-                    merge_addr = start_addr + 12
-                    self.simgr.use_technique(ManualMerger(start_addr, [merge_addr], wait_counter=10))
-                elif cmse_check_address_range_symbol is not None:
-                    start_addr = cmse_check_address_range_symbol.rebased_addr
-                    merge_addrs = []
-                    # For riot-tee
-                    if self.proj.loader.find_symbol("tee_secure_entry"):
-                        merge_addrs = [start_addr + 0xE0, start_addr + 0x3C]
-                    # For mTower
-                    elif self.proj.loader.find_symbol("ioctl"):
-                        merge_addrs = [start_addr + 0x42]
-
-                    if merge_addrs:
-                        self.simgr.use_technique(ManualMerger(start_addr, merge_addrs, wait_counter=10))
-
-                # For intel_sgx_sdk
-                # Resolved via the SymbolManager, as enclave dumps have no symbols in the angr loader (requires --sdk-elf-file
-                # or a matching .so next to the dump).
-                # All paths join at the shared `pop %rbp; ret` epilogue (last 2 bytes), with eax already set to 0/1.
-                # Offset differs per SDK version (2.13.3 lacks endbr64), so derive it from the symbol size.
-                for sgx_fn in ["sgx_is_outside_enclave", "sgx_is_within_enclave"]:
-                    start_addr = SymbolManager().symbol_to_addr(sgx_fn)
-                    size = SymbolManager().symbol_size(sgx_fn)
-                    if start_addr is None or not size:
-                        logger.debug(f"ManualMerger: symbol {sgx_fn} not found, not merging it")
-                        continue
-                    merge_addrs = [start_addr + size - 2]
-                    self.simgr.use_technique(ManualMerger(start_addr, merge_addrs, wait_counter=10))
+                # Automatically detect pure, branchy leaf functions (e.g. address-range
+                # checks) and merge all paths through them on their return value.
+                merge_candidates = find_merge_candidates(self.proj)
+                if merge_candidates:
+                    logger.info(f"Auto-detected {len(merge_candidates)} merge-point function(s):")
+                    for start_addr, merge_addrs, func_name, branch_count in merge_candidates:
+                        logger.info(f"  {func_name} @ {start_addr:#x}: {branch_count} branches, merging at {[hex(a) for a in merge_addrs]}")
+                        self.simgr.use_technique(ManualMerger(start_addr, merge_addrs, wait_counter=10, name=func_name))
+                else:
+                    logger.info("Manual merger is enabled but no merge-point functions were auto-detected.")
 
             # To log basic blocks when logging is set to TRACE, we use the TraceLogger
             self.simgr.use_technique(TraceLogger())
