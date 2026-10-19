@@ -2,6 +2,7 @@ import datetime
 import enum
 import json
 import logging
+import time
 import timeit
 from collections import defaultdict
 from pathlib import Path
@@ -277,6 +278,8 @@ class Reporter(metaclass=Singleton):
                 "constraints": attacker_constraints,
                 "extra": {str(k): str(v) for k, v in extra_info.items()},
                 "extra-sections": extra_sections,
+                "timestamp": time.time(),
+                "reentry_round": state.globals.get("reentry_round", 0),
             }
 
             # self.report_data[plugin_shortname].setdefault("events", []).append(report_element)

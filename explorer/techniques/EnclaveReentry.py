@@ -1,4 +1,5 @@
 import logging
+import time
 
 import angr
 from angr import ExplorationTechnique
@@ -22,6 +23,10 @@ class EnclaveReentry(ExplorationTechnique):
         self.enclave_reentry_count = enclave_reentry_count
         self.initial_state = init_state
         self.performed_reentries = 0
+        # Timing of the reentry rounds (round 0 is the initial entry)
+        self.start_time = time.time()
+        self.round_start_time = self.start_time
+        self.round_steps = 0
         self.unique_states = unique_state_list
         self.action = user_action
 
@@ -36,12 +41,20 @@ class EnclaveReentry(ExplorationTechnique):
                 if len(reverse_changes) == 0:
                     return True
 
+    def finish(self):
+        now = time.time()
+        log_always(
+            logger,
+            f"--- Reentry round {self.performed_reentries} ended with the run: took {now - self.round_start_time:.1f}s and {self.round_steps} steps (elapsed {now - self.start_time:.1f}s, {self.performed_reentries} reentries performed).",
+        )
+
     def step(self, simgr, **kwargs):
         # Only once before first step, put the init state into the uniques
         if len(simgr.stashes["uniques"]) == 0:
             simgr.populate("uniques", [self.initial_state])
 
         simgr = simgr.step(**kwargs)
+        self.round_steps += 1
 
         """
         After stepping, remove the eexited stash by putting all eexited states either into the new_uniques stash
@@ -71,12 +84,20 @@ class EnclaveReentry(ExplorationTechnique):
         """
         states_exhausted = len(simgr.active) == 0
         if states_exhausted and self.performed_reentries < self.enclave_reentry_count and len(simgr.stashes["new_uniques"]) > 0:
+            now = time.time()
+            log_always(
+                logger,
+                f"--- Reentry round {self.performed_reentries} done: took {now - self.round_start_time:.1f}s and {self.round_steps} steps (elapsed {now - self.start_time:.1f}s, unix time {now:.0f}).",
+            )
             self.performed_reentries += 1
-            log_always(logger, "--- Exhausted all my states. Restarting all new unique states...")
+            self.round_start_time = now
+            self.round_steps = 0
+            log_always(logger, f"--- Exhausted all my states. Restarting all {len(simgr.stashes['new_uniques'])} new unique states for reentry round {self.performed_reentries}...")
 
             reentered_states = []
             for state in simgr.stashes["new_uniques"]:
                 eenter(state)
+                state.globals["reentry_round"] = self.performed_reentries
                 # SDK-specific fan-out (no-op for single-entry-point SDKs like SGX;
                 # re-enters all NSC functions in parallel for ARM Cortex-M)
                 reentered_states.extend(SDKManager().get_reentry_fanout(state))
