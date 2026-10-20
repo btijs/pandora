@@ -1,5 +1,7 @@
+import json
 import logging
 import time
+from pathlib import Path
 
 import angr
 from angr import ExplorationTechnique
@@ -8,6 +10,7 @@ from explorer.enclave import eenter
 from sdks.SDKManager import SDKManager
 from ui.action import UserActionWithLevel
 from ui.log_format import log_always
+from ui.report import generate_basedir
 
 logger = logging.getLogger(__name__)
 
@@ -29,17 +32,63 @@ class EnclaveReentry(ExplorationTechnique):
         self.round_steps = 0
         self.unique_states = unique_state_list
         self.action = user_action
+        # Fingerprints of all states that were (or are waiting to be) entered, over all rounds
+        self.secure_ranges = SDKManager().get_enclave_range()
+        self.seen_fingerprints = {self._fingerprint(init_state)[0]} if enclave_reentry_count > 0 else set()
+        self.round_exits = 0
+        self.round_new = 0
+        self.diag_file = None
 
-    def _is_contained(self, state, stash):
+    def setup(self, simgr):
+        if self.enclave_reentry_count > 0:
+            binpath = Path(self.initial_state.project.filename)
+            self.diag_file = open(generate_basedir("report_folder", binpath) / f"reentry_states_{binpath.stem}.jsonl", "w")
+
+    def _secure_runs(self, state):
         """
-        Returns true if state is already contained as a unique state in the stash. False otherwise.
+        Returns the contiguous (start, length) runs of secure memory in which `state` differs from the initial state.
+        Non-secure memory is never stored to (and every non-secure load returns fresh attacker data), so secure memory
+        is all the state that carries over from one entry to the next.
         """
-        for unique_state in stash:
-            changed_bytes = list(unique_state.memory.changed_bytes(state.memory))
-            if len(changed_bytes) == 0:
-                reverse_changes = list(state.memory.changed_bytes(unique_state.memory))
-                if len(reverse_changes) == 0:
-                    return True
+        changed = state.memory.changed_bytes(self.initial_state.memory) | self.initial_state.memory.changed_bytes(state.memory)
+        changed = sorted(a for a in changed if any(start <= a <= end for start, end in self.secure_ranges))
+
+        runs = []
+        for addr in changed:
+            if runs and runs[-1][0] + runs[-1][1] == addr:
+                runs[-1][1] += 1
+            else:
+                runs.append([addr, 1])
+        return [tuple(r) for r in runs]
+
+    def _fingerprint(self, state):
+        """
+        Fingerprint of the secure memory of `state`, insensitive to the names of symbolic variables: every entry taints
+        the registers and non-secure inputs with fresh variables, so states that are equal up to renaming would otherwise
+        never match. Path constraints are not part of the fingerprint.
+        """
+        mem_state = state.copy()  # loads of uninitialized memory may fill it, keep the real state untouched
+        var_map, counter = {}, 0
+        parts = []
+        for start, length in self._secure_runs(state):
+            val = mem_state.memory.load(start, length, inspect=False, disable_actions=True, with_enclave_boundaries=False)
+            var_map, counter, canonical = val.canonicalize(var_map, counter)
+            parts.append((start, length, canonical.hash()))
+        return hash(tuple(parts)), parts
+
+    def _log_diagnostics(self, state, fingerprint, parts, is_new):
+        if self.diag_file is None:
+            return
+        entry = {
+            "round": self.performed_reentries,
+            "time": time.time(),
+            "fingerprint": fingerprint,
+            "new": is_new,
+            "ip": state.addr,
+            "runs": [[start, length, h] for start, length, h in parts],
+        }
+        self.diag_file.write(json.dumps(entry) + "\n")
+        self.diag_file.flush()
 
     def finish(self):
         now = time.time()
@@ -49,10 +98,6 @@ class EnclaveReentry(ExplorationTechnique):
         )
 
     def step(self, simgr, **kwargs):
-        # Only once before first step, put the init state into the uniques
-        if len(simgr.stashes["uniques"]) == 0:
-            simgr.populate("uniques", [self.initial_state])
-
         simgr = simgr.step(**kwargs)
         self.round_steps += 1
 
@@ -63,19 +108,20 @@ class EnclaveReentry(ExplorationTechnique):
         if self.enclave_reentry_count > 0 and len(simgr.stashes["eexited"]) > 0:
             new_count = 0
             for s in simgr.stashes["eexited"]:
-                is_new_unique = True
-                if self._is_contained(s, simgr.stashes["new_uniques"]):
-                    is_new_unique = False
-
-                if is_new_unique and self._is_contained(s, simgr.stashes["all_uniques"]):
-                    is_new_unique = False
+                fingerprint, parts = self._fingerprint(s)
+                is_new_unique = fingerprint not in self.seen_fingerprints
+                self._log_diagnostics(s, fingerprint, parts, is_new_unique)
 
                 if is_new_unique:
                     new_count += 1
+                    self.seen_fingerprints.add(fingerprint)
                     simgr.move(from_stash="eexited", to_stash="new_uniques", filter_func=lambda x: x is s)
 
+            self.round_exits += len(simgr.stashes["eexited"]) + new_count
+            self.round_new += new_count
+
             # Clean up eexit stash after removing uniques
-            logger.info(f"Cleaned up {len(simgr.stashes['eexited'])} eexited states, we got {new_count} new uniques for a total of ({len(simgr.stashes['new_uniques'])},{len(simgr.stashes['uniques'])}) new/old uniques")
+            logger.info(f"Cleaned up {len(simgr.stashes['eexited'])} eexited states, we got {new_count} new uniques for a total of {len(simgr.stashes['new_uniques'])} new uniques and {len(self.seen_fingerprints)} unique states seen")
             simgr.drop(stash="eexited")
             simgr._copy_stashes()
 
@@ -92,6 +138,8 @@ class EnclaveReentry(ExplorationTechnique):
             self.performed_reentries += 1
             self.round_start_time = now
             self.round_steps = 0
+            self.round_exits = 0
+            self.round_new = 0
             log_always(logger, f"--- Exhausted all my states. Restarting all {len(simgr.stashes['new_uniques'])} new unique states for reentry round {self.performed_reentries}...")
 
             reentered_states = []
@@ -105,8 +153,6 @@ class EnclaveReentry(ExplorationTechnique):
             # restart all new unique states (the ones that we did not restart)
             simgr.drop(stash="new_uniques")
             simgr.populate("active", reentered_states)
-            # And copy all new uniques to the uniques stash
-            simgr.populate("uniques", reentered_states)
 
             # new_uniques = get_unique_states(simgr.stashes['eexited'], self.initial_state, existing_uniques=simgr.stashes['uniques'])
             # logger.debug(f'Found {len(new_uniques)} unique states.')
