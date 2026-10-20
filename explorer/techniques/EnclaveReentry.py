@@ -11,8 +11,14 @@ from sdks.SDKManager import SDKManager
 from ui.action import UserActionWithLevel
 from ui.log_format import log_always
 from ui.report import generate_basedir
+from utilities.angr_helper import get_reg_value
 
 logger = logging.getLogger(__name__)
+
+STACK_REGS = ["sp", "msp", "psp", "msp_s", "psp_s"]
+
+# The dead part of the stack below the stack pointer that is ignored by the fingerprint is at most this large
+DEAD_STACK_WINDOW = 0x10000
 
 
 class EnclaveReentry(ExplorationTechnique):
@@ -32,8 +38,10 @@ class EnclaveReentry(ExplorationTechnique):
         self.round_steps = 0
         self.unique_states = unique_state_list
         self.action = user_action
-        # Fingerprints of all states that were (or are waiting to be) entered, over all rounds
         self.secure_ranges = SDKManager().get_enclave_range()
+        # Allocated ELF sections that hold data, i.e. everything a stack pointer must never be allowed to hide
+        self.data_sections = [(sec.vaddr, sec.vaddr + sec.memsize) for sec in init_state.project.loader.main_object.sections if sec.occupies_memory and sec.memsize > 0 and "stack" not in sec.name.lower()]
+        # Fingerprints of all states that were (or are waiting to be) entered, over all rounds
         self.seen_fingerprints = {self._fingerprint(init_state)[0]} if enclave_reentry_count > 0 else set()
         self.round_exits = 0
         self.round_new = 0
@@ -44,14 +52,29 @@ class EnclaveReentry(ExplorationTechnique):
             binpath = Path(self.initial_state.project.filename)
             self.diag_file = open(generate_basedir("report_folder", binpath) / f"reentry_states_{binpath.stem}.jsonl", "w")
 
+    def _dead_stack(self, state):
+        """
+        Returns the [start, end) range below the stack pointer of `state` whose contents are dead once the secure world
+        exits, or None. The range never extends into an ELF data section, and the rule is skipped altogether when the
+        stack pointer itself points into one (e.g. a thread stack allocated on the heap), since memory below it is live.
+        """
+        sp = get_reg_value(state, "sp")
+        if not isinstance(sp, int) or not any(start <= sp <= end for start, end in self.secure_ranges):
+            return None
+        if any(start <= sp < end for start, end in self.data_sections):
+            return None
+        low = max([sp - DEAD_STACK_WINDOW] + [end for _, end in self.data_sections if end <= sp])
+        return low, sp
+
     def _secure_runs(self, state):
         """
         Returns the contiguous (start, length) runs of secure memory in which `state` differs from the initial state.
         Non-secure memory is never stored to (and every non-secure load returns fresh attacker data), so secure memory
-        is all the state that carries over from one entry to the next.
+        is all the state that carries over from one entry to the next. The dead stack below the stack pointer is left out.
         """
         changed = state.memory.changed_bytes(self.initial_state.memory) | self.initial_state.memory.changed_bytes(state.memory)
-        changed = sorted(a for a in changed if any(start <= a <= end for start, end in self.secure_ranges))
+        dead = self._dead_stack(state)
+        changed = sorted(a for a in changed if any(start <= a <= end for start, end in self.secure_ranges) and not (dead and dead[0] <= a < dead[1]))
 
         runs = []
         for addr in changed:
@@ -85,6 +108,7 @@ class EnclaveReentry(ExplorationTechnique):
             "fingerprint": fingerprint,
             "new": is_new,
             "ip": state.addr,
+            "stack_regs": {r: str(get_reg_value(state, r)) for r in STACK_REGS},
             "runs": [[start, length, h] for start, length, h in parts],
         }
         self.diag_file.write(json.dumps(entry) + "\n")
@@ -133,7 +157,7 @@ class EnclaveReentry(ExplorationTechnique):
             now = time.time()
             log_always(
                 logger,
-                f"--- Reentry round {self.performed_reentries} done: took {now - self.round_start_time:.1f}s and {self.round_steps} steps (elapsed {now - self.start_time:.1f}s, unix time {now:.0f}).",
+                f"--- Reentry round {self.performed_reentries} done: took {now - self.round_start_time:.1f}s and {self.round_steps} steps, {self.round_exits} exits of which {self.round_new} new unique states ({len(self.seen_fingerprints)} seen in total) (elapsed {now - self.start_time:.1f}s, unix time {now:.0f}).",
             )
             self.performed_reentries += 1
             self.round_start_time = now
