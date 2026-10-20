@@ -66,13 +66,39 @@ class EnclaveReentry(ExplorationTechnique):
         low = max([sp - DEAD_STACK_WINDOW] + [end for _, end in self.data_sections if end <= sp])
         return low, sp
 
+    def _changed_secure_bytes(self, state):
+        """
+        Returns the addresses of the pages overlapping secure memory in which `state` differs from the initial state.
+        Same as angr's memory.changed_bytes(), but compared page by page so that only secure pages are compared, and a
+        page that angr fails to compare (IndexError in UltraPage's symbolic bitmap) counts as changed as a whole.
+        """
+        mem, init_mem = state.memory, self.initial_state.memory
+        page_size = mem.page_size
+        changed = set()
+        for pageno in set(mem._pages) | set(init_mem._pages):
+            page_addr = pageno * page_size
+            if not any(start <= page_addr + page_size - 1 and page_addr <= end for start, end in self.secure_ranges):
+                continue
+            page, init_page = mem._pages.get(pageno), init_mem._pages.get(pageno)
+            if page is init_page:
+                continue
+            if page is None or init_page is None:
+                changed.update(range(page_addr, page_addr + page_size))
+                continue
+            try:
+                changed.update(page_addr + a for a in page.changed_bytes(init_page, page_addr=page_addr))
+                changed.update(page_addr + a for a in init_page.changed_bytes(page, page_addr=page_addr))
+            except IndexError:
+                changed.update(range(page_addr, page_addr + page_size))
+        return changed
+
     def _secure_runs(self, state):
         """
         Returns the contiguous (start, length) runs of secure memory in which `state` differs from the initial state.
         Non-secure memory is never stored to (and every non-secure load returns fresh attacker data), so secure memory
         is all the state that carries over from one entry to the next. The dead stack below the stack pointer is left out.
         """
-        changed = state.memory.changed_bytes(self.initial_state.memory) | self.initial_state.memory.changed_bytes(state.memory)
+        changed = self._changed_secure_bytes(state)
         dead = self._dead_stack(state)
         changed = sorted(a for a in changed if any(start <= a <= end for start, end in self.secure_ranges) and not (dead and dead[0] <= a < dead[1]))
 
