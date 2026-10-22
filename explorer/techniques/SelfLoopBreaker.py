@@ -28,4 +28,9 @@ class SelfLoopBreaker(ExplorationTechnique):
     def step(self, simgr, stash="active", **kwargs):
         simgr = simgr.step(stash=stash, **kwargs)
         simgr.move(stash, self.stash, self._filter)
+
+        # PandoraDFS refills the active stash from its deferred stash before this technique runs, so stopping the only
+        # active path would otherwise end the exploration while deferred paths are left
+        if len(simgr.stashes[stash]) == 0 and len(simgr.stashes.get("deferred", [])) != 0:
+            simgr.stashes[stash].append(simgr.stashes["deferred"].pop())
         return simgr
